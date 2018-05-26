@@ -70,7 +70,7 @@ defmodule StreamDataTypes do
         t
 
       _ ->
-        raise ArgumentError, "Not enough arguments passed"
+        raise ArgumentError, "Wrong amount of arguments passed."
     end
   end
 

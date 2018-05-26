@@ -4,7 +4,7 @@ defmodule StreamData.TypesTest do
 
   alias StreamDataTypes, as: Types
 
-  test "when missing a type" do
+  test "raises when missing a type" do
     assert_raise(
       ArgumentError,
       "Module StreamDataTest.TypesList does not define a type called does_not_exist.\n",
@@ -12,7 +12,7 @@ defmodule StreamData.TypesTest do
     )
   end
 
-  test "when missing a module" do
+  test "raises when missing a module" do
     assert_raise(
       ArgumentError,
       """
@@ -21,6 +21,16 @@ defmodule StreamData.TypesTest do
       """,
       fn ->
         Types.from_type(DoesNotExist, :some_type)
+      end
+    )
+  end
+
+  test "raises when wrong number of arguments given" do
+    assert_raise(
+      ArgumentError,
+      "Wrong amount of arguments passed.",
+      fn ->
+        generate_data(:basic_atom, v: :integer)
       end
     )
   end

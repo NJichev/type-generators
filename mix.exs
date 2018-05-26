@@ -6,6 +6,7 @@ defmodule TypeGenerators.MixProject do
       app: :type_generators,
       version: "0.1.0",
       elixir: "~> 1.6",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -20,4 +21,7 @@ defmodule TypeGenerators.MixProject do
   defp deps() do
     [{:stream_data, "~> 0.1", only: :test}]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test"]
+  defp elixirc_paths(_), do: ["lib"]
 end

@@ -1,4 +1,6 @@
 defmodule StreamDataTypes do
+  import StreamData
+
   @doc """
   Returns any kind of generator by a given type definition.
   The function takes in a module name, function name and a keyword list
@@ -92,7 +94,35 @@ defmodule StreamDataTypes do
 
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.
-  defp do_generate(type, _args) do
-    type
+  defp do_generate({_name, type}, _args) do
+    generate(type)
+  end
+
+  def generate({:type, _line, :atom, _}) do
+    atom(:alphanumeric)
+  end
+
+  def generate({:type, _line, :fun, [{:type, _, :product, args}, ret_type]}) do
+    vars =
+      args
+      |> length
+      |> Macro.generate_arguments(Elixir)
+
+
+    f = fn seed, size ->
+      ast = quote do
+        fn unquote_splicing(vars) ->
+          int = :erlang.phash2([unquote_splicing(vars)])
+          new_seed = :rand.seed_s(:exsp, {int, 0, 0})
+          var!(generator).(new_seed, var!(size)).root
+        end
+      end
+
+      gen = generate(ret_type).generator
+      {root, _} = Code.eval_quoted(ast, [generator: gen, seed: seed, size: size])
+      %StreamData.LazyTree{root: root}
+    end
+
+    %StreamData{generator: f}
   end
 end

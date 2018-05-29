@@ -7,7 +7,7 @@ defmodule StreamData.TypesTest do
   test "raises when missing a type" do
     assert_raise(
       ArgumentError,
-      "Module StreamDataTest.TypesList does not define a type called does_not_exist.\n",
+      "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
       fn -> generate_data(:does_not_exist) end
     )
   end
@@ -35,8 +35,16 @@ defmodule StreamData.TypesTest do
     )
   end
 
-  test "a type is returned" do
-    assert {:basic_atom, {:type, _line, :atom, []}} = generate_data(:basic_atom)
+  describe "basic types" do
+    test "functions work" do
+      data = generate_data(:basic_function)
+
+      check all f <- data do
+        1..10
+        |> Enum.map(f)
+        |> Enum.each(&(assert is_atom(&1)))
+      end
+    end
   end
 
   defp generate_data(name, args \\ []) do

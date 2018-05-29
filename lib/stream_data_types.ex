@@ -9,19 +9,17 @@ defmodule StreamDataTypes do
   Say you have a simple type that is a tuple of an atom and integer,
   you can use from_type to create a generator out of it.
 
-    defmodule MyModule do
-      @type t :: {atom(), integer()}
-    end
+      defmodule MyModule do
+        @type t :: {atom(), integer()}
+      end
 
-    from_type(MyModule, :t) |> Enum.take(3)
-    #=> [{:asdf, 3}, {:aub, -1}, {:fae, 0}]
+      from_type(MyModule, :t) |> Enum.take(3)
+      #=> [{:asdf, 3}, {:aub, -1}, {:fae, 0}]
 
   ## Shrinking(TODO(njichev))
   """
-  def from_type(module, name, args \\ [])
-
-  def from_type(module, name, args) when is_atom(module) and is_atom(name) and is_list(args) do
-    type = for x = {^name, _type} <- beam_types(module), do: x
+  def from_type(module, name, args \\ []) when is_atom(module) and is_atom(name) and is_list(args) do
+    type = for pair = {^name, _type} <- beam_types(module), do: pair
 
     # pick correct type, when multiple
     # Validate outer is list/map/tuple when having args
@@ -30,14 +28,14 @@ defmodule StreamDataTypes do
     case type do
       [] ->
         msg = """
-        Module #{inspect(module)} does not define a type called #{name}.
+        Module #{inspect(module)} does not define type #{name}/#{length(args)}.
         """
 
         raise ArgumentError, msg
 
       types when is_list(types) ->
         pick_type(types, args)
-        |> do_generate(args)
+        |> generate_from_type(args)
     end
   end
 
@@ -63,14 +61,12 @@ defmodule StreamDataTypes do
   # otherwise raise an argument error.
   defp pick_type(types, args) do
     len = length(args)
-    res = for {_name, t} = type <- types, vars(t) == len, do: type
+    type = Enum.find(types, fn {_name, type} -> vars(type) == len end)
 
-    case res do
-      [t] ->
-        t
-
-      _ ->
-        raise ArgumentError, "Wrong amount of arguments passed."
+    if type do
+      type
+    else
+      raise ArgumentError, "Wrong amount of arguments passed."
     end
   end
 
@@ -92,7 +88,7 @@ defmodule StreamDataTypes do
 
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.
-  defp do_generate(type, _args) do
+  defp generate_from_type(type, _args) do
     type
   end
 end

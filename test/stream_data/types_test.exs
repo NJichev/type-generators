@@ -7,7 +7,7 @@ defmodule StreamData.TypesTest do
   test "raises when missing a type" do
     assert_raise(
       ArgumentError,
-      "Module StreamDataTest.TypesList does not define a type called does_not_exist.\n",
+       "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
       fn -> generate_data(:does_not_exist) end
     )
   end

@@ -19,7 +19,7 @@ defmodule TypeGenerators.MixProject do
   end
 
   defp deps() do
-    [{:stream_data, "~> 0.1", only: :test}]
+    [{:stream_data, "~> 0.4"}]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test"]

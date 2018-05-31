@@ -7,4 +7,6 @@ defmodule StreamDataTest.TypesList do
   @type basic_neg_integer() :: neg_integer()
   @type basic_non_neg_integer() :: non_neg_integer()
   @type basic_pos_integer() :: pos_integer()
+
+  @type literal_function_arity_1 :: (any() -> integer())
 end

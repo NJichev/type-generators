@@ -78,6 +78,18 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "literals" do
+    test "function literal with 1 argument" do
+      data = generate_data(:literal_function_arity_1)
+
+      check all f <- data do
+        1..10
+        |> Enum.map(f)
+        |> Enum.each(&(assert is_integer(&1)))
+      end
+    end
+  end
+
   defp generate_data(name, args \\ []) do
     Types.from_type(StreamDataTest.TypesList, name, args)
   end

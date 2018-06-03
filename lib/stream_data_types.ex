@@ -114,19 +114,32 @@ defmodule StreamDataTypes do
     float()
   end
 
+  defp generate({:type, _line, :fun, [{:type, _, :any}, ret_type]}) do
+    ret_type = generate(ret_type)
+
+    create_fun(ret_type)
+  end
+
   defp generate({:type, _line, :fun, [{:type, _, :product, args}, ret_type]}) do
     arity = length(args)
     ret_type = generate(ret_type)
 
-    f = create_fun(arity, ret_type)
-
-    %StreamData{generator: f}
+    create_fun(arity, ret_type)
   end
 
-  defp create_fun(arity, %StreamData{generator: generator}) do
-    vars = Macro.generate_arguments(arity, Elixir)
+  @fn_arity_cap 20
+  defp create_fun(arity \\ nil, %StreamData{generator: generator}) do
+    f = fn seed, size ->
+      arity =
+        if arity do
+          arity
+        else
+          {int, _next_seed} = :rand.uniform_s(@fn_arity_cap, seed)
+          int
+        end
 
-    fn seed, size ->
+      vars = Macro.generate_arguments(arity, Elixir)
+
       ast = quote do
         fn unquote_splicing(vars) ->
           int = :erlang.phash2([unquote_splicing(vars)])
@@ -135,9 +148,10 @@ defmodule StreamDataTypes do
         end
       end
 
-      {root, _} = Code.eval_quoted(ast, [generator: generator, seed: seed, size: size])
+      {root, _} = Code.eval_quoted(ast, [generator: generator, size: size])
       lazy_tree(root)
     end
+    %StreamData{generator: f}
   end
 
   defp lazy_tree(root, children \\ []) do

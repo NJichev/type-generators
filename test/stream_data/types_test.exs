@@ -79,13 +79,51 @@ defmodule StreamData.TypesTest do
   end
 
   describe "literals" do
+    test "function with any arity" do
+      data = generate_data(:literal_function_arity_any)
+
+      check all f <- data, i <- integer() do
+        assert is_function(f)
+
+        {:arity, arity} = :erlang.fun_info(f, :arity)
+        args = List.duplicate(i, arity)
+
+        ast = quote do
+          var!(f).(unquote_splicing(args))
+        end
+        {int, _} = Code.eval_quoted(ast, f: f)
+
+        assert is_float(int)
+      end
+    end
+
+    test "function literal with 0 arguments" do
+      data = generate_data(:literal_function_arity_0)
+
+      check all f <- data do
+        assert is_function(f, 0)
+        assert f.() == f.() # The function is pure
+        int = f.()
+        assert is_integer(int)
+        assert int < 0
+      end
+    end
+
     test "function literal with 1 argument" do
       data = generate_data(:literal_function_arity_1)
 
-      check all f <- data do
-        1..10
-        |> Enum.map(f)
-        |> Enum.each(&(assert is_integer(&1)))
+      check all f <- data, i <- integer() do
+        assert is_function(f, 1)
+        assert is_integer(f.(i))
+      end
+    end
+
+    test "function literal with 2 arguments" do
+      data = generate_data(:literal_function_arity_2)
+
+      check all f <- data, a <- integer(), b <- integer() do
+        assert is_function(f, 2)
+        assert is_integer(f.(a, b))
       end
     end
   end

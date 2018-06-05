@@ -7,7 +7,7 @@ defmodule StreamData.TypesTest do
   test "raises when missing a type" do
     assert_raise(
       ArgumentError,
-       "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
+      "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
       fn -> generate_data(:does_not_exist) end
     )
   end
@@ -26,16 +26,25 @@ defmodule StreamData.TypesTest do
   end
 
   test "raises when wrong number of arguments given" do
-    assert_raise(
-      ArgumentError,
-      "Wrong amount of arguments passed.",
-      fn ->
-        generate_data(:basic_atom, v: :integer)
-      end
-    )
+    assert_raise(ArgumentError, "Wrong amount of arguments passed.", fn ->
+      generate_data(:basic_atom, v: :integer)
+    end)
   end
 
   describe "basic types" do
+    test "map" do
+      data = generate_data(:basic_map)
+
+      # Check that not all generated maps are empty
+      assert Enum.take(data, 5)
+             |> Enum.map(&map_size(&1))
+             |> Enum.sum() > 0
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+      end
+    end
+
     test "float" do
       data = generate_data(:basic_float)
 

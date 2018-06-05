@@ -113,4 +113,8 @@ defmodule StreamDataTypes do
   defp generate({:type, _, :float, _}) do
     float()
   end
+
+  defp generate({:type, _, :map, :any}) do
+    map_of(term(), term())
+  end
 end

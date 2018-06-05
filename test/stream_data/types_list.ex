@@ -19,4 +19,14 @@ defmodule StreamDataTest.TypesList do
   ## Nested Lists
   @type nested_list_type :: list(list(integer()))
   @type nested_nonempty_list_type :: nonempty_list(list(integer()))
+
+  ## Literals
+  # Lists
+  @type literal_list_type() :: [integer()]
+  @type literal_empty_list() :: []
+  @type literal_list_nonempty() :: [...]
+  @type literal_nonempty_list_type() :: [float(), ...]
+  @type literal_keyword_list_fixed_key() :: [key: integer()]
+  @type literal_keyword_list_fixed_key2() :: [{:key, integer()}]
+  @type literal_keyword_list_type_key() :: [{binary(), integer()}]
 end

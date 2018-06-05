@@ -125,6 +125,14 @@ defmodule StreamDataTypes do
     |> list_of()
   end
 
+  defp generate({:type, _, nil, []}), do: constant([])
+
+  defp generate({:type, _, :nonempty_list, []}) do
+    term()
+    |> list_of()
+    |> nonempty()
+  end
+
   defp generate({:type, _, :nonempty_list, [type]}) do
     generate(type)
     |> list_of()

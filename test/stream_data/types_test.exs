@@ -146,6 +146,44 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "literals" do
+    test "list type" do
+      data = generate_data(:literal_list_type)
+
+      check all x <- data do
+        assert is_list(x)
+        assert Enum.all?(x, &is_integer(&1))
+      end
+    end
+
+    test "empty list" do
+      data = generate_data(:literal_empty_list)
+
+      check all x <- data do
+        assert x == []
+      end
+    end
+
+    test "nonempty list" do
+      data = generate_data(:literal_list_nonempty)
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+        assert x != []
+      end
+    end
+
+    test "nonempty list with type" do
+      data = generate_data(:literal_nonempty_list_type)
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+        assert x != []
+        assert Enum.all?(x, &is_float(&1))
+      end
+    end
+  end
+
   defp each_improper_list([], _head_fun, _tail_fun), do: :ok
 
   defp each_improper_list([elem], _head_fun, tail_fun) do

@@ -184,6 +184,42 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "builtin" do
+    test "list" do
+      data = generate_data(:builtin_list)
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+      end
+    end
+
+    test "nonempty_list" do
+      data = generate_data(:builtin_nonempty_list)
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+        assert x != []
+      end
+    end
+
+    test "maybe_improper_list" do
+      data = generate_data(:builtin_maybe_improper_list)
+
+      check all list <- data, max_runs: 25 do
+        each_improper_list(list, &assert(is_term(&1)), &assert(is_term(&1)))
+      end
+    end
+
+    test "nonempty_maybe_improper_list" do
+      data = generate_data(:builtin_nonempty_maybe_improper_list)
+
+      check all list <- data, max_runs: 25 do
+        assert list != []
+        each_improper_list(list, &assert(is_term(&1)), &assert(is_term(&1)))
+      end
+    end
+  end
+
   defp each_improper_list([], _head_fun, _tail_fun), do: :ok
 
   defp each_improper_list([elem], _head_fun, tail_fun) do
@@ -202,5 +238,10 @@ defmodule StreamData.TypesTest do
 
   defp generate_data(name, args \\ []) do
     Types.from_type(StreamDataTest.TypesList, name, args)
+  end
+
+  defp is_term(t) do
+    is_boolean(t) or is_integer(t) or is_float(t) or is_binary(t) or is_atom(t) or is_reference(t) or
+      is_list(t) or is_map(t) or is_tuple(t)
   end
 end

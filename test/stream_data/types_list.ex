@@ -29,4 +29,11 @@ defmodule StreamDataTest.TypesList do
   @type literal_keyword_list_fixed_key() :: [key: integer()]
   @type literal_keyword_list_fixed_key2() :: [{:key, integer()}]
   @type literal_keyword_list_type_key() :: [{binary(), integer()}]
+
+  ## Built-in
+  # Lists
+  @type builtin_list() :: list()
+  @type builtin_nonempty_list() :: nonempty_list()
+  @type builtin_maybe_improper_list() :: maybe_improper_list()
+  @type builtin_nonempty_maybe_improper_list() :: nonempty_maybe_improper_list()
 end

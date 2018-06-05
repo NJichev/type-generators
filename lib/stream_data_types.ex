@@ -113,4 +113,8 @@ defmodule StreamDataTypes do
   defp generate({:type, _, :float, _}) do
     float()
   end
+
+  defp generate({:type, _, type, _}) when type in [:any, :term] do
+    term()
+  end
 end

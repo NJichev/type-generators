@@ -1,4 +1,6 @@
 defmodule StreamDataTypes do
+  import StreamData
+
   @doc """
   Returns any kind of generator by a given type definition.
   The function takes in a module name, function name and a keyword list
@@ -88,7 +90,27 @@ defmodule StreamDataTypes do
 
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.
-  defp generate_from_type(type, _args) do
-    type
+  defp generate_from_type({_name, type}, _args) do
+    generate(type)
+  end
+
+  defp generate({:type, _, :integer, _}) do
+    integer()
+  end
+
+  defp generate({:type, _, :pos_integer, _}) do
+    positive_integer()
+  end
+
+  defp generate({:type, _, :neg_integer, _}) do
+    map(positive_integer(), &(-1 * &1))
+  end
+
+  defp generate({:type, _, :non_neg_integer, _}) do
+    map(integer(), &(abs(&1)))
+  end
+
+  defp generate({:type, _, :float, _}) do
+    float()
   end
 end

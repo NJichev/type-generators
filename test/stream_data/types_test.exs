@@ -35,8 +35,47 @@ defmodule StreamData.TypesTest do
     )
   end
 
-  test "a type is returned" do
-    assert {:basic_atom, {:type, _line, :atom, []}} = generate_data(:basic_atom)
+  describe "basic types" do
+    test "float" do
+      data = generate_data(:basic_float)
+
+      check all x <- data do
+        assert is_float(x)
+      end
+    end
+
+    test "integer" do
+      data = generate_data(:basic_integer)
+
+      check all x <- data, do: assert(is_integer(x))
+    end
+
+    test "pos_integer" do
+      data = generate_data(:basic_pos_integer)
+
+      check all x <- data do
+        assert is_integer(x)
+        assert x > 0
+      end
+    end
+
+    test "non_neg_integer" do
+      data = generate_data(:basic_non_neg_integer)
+
+      check all x <- data do
+        assert is_integer(x)
+        assert x >= 0
+      end
+    end
+
+    test "neg_integer" do
+      data = generate_data(:basic_neg_integer)
+
+      check all x <- data do
+        assert is_integer(x)
+        assert x < 0
+      end
+    end
   end
 
   defp generate_data(name, args \\ []) do

@@ -94,7 +94,7 @@ defmodule StreamDataTypes do
   defp generate_from_type({_name, type}, _args) do
     generate(type)
   end
-  
+
   defp generate({:type, _, type, _}) when type in [:any, :term] do
     term()
   end
@@ -106,7 +106,6 @@ defmodule StreamDataTypes do
   defp generate({:type, _, bottom, _}) when bottom in [:none, :no_return] do
     raise ArgumentError, "Cannot generate types of the none type."
   end
-
 
   defp generate({:type, _, :integer, _}) do
     integer()
@@ -130,6 +129,19 @@ defmodule StreamDataTypes do
 
   defp generate({:type, _, :reference, _}) do
     map(constant(:unused), fn _ -> make_ref() end)
+  end
+
+  defp generate({:type, _, :tuple, :any}) do
+    term()
+    |> list_of()
+    |> map(&List.to_tuple/1)
+  end
+
+  defp generate({:type, _, :tuple, types}) do
+    types
+    |> Enum.map(&generate/1)
+    |> List.to_tuple()
+    |> tuple()
   end
 
   defp generate({:type, _, :list, []}) do
@@ -211,7 +223,7 @@ defmodule StreamDataTypes do
       end)
     end)
   end
-  
+
   ## Built-in types
   defp generate({:type, _, :arity, []}) do
     integer(0..255)

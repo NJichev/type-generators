@@ -113,4 +113,83 @@ defmodule StreamDataTypes do
   defp generate({:type, _, :float, _}) do
     float()
   end
+
+  ## Built-in types
+  defp generate({:type, _, :arity, []}) do
+    integer(0..255)
+  end
+
+  defp generate({:type, _, :boolean, []}) do
+    boolean()
+  end
+
+  defp generate({:type, _, :byte, []}) do
+    byte()
+  end
+
+  defp generate({:type, _, :char, []}) do
+    char()
+  end
+
+  # Note: This is the type we call charlist()
+  defp generate({:type, _, :string, []}) do
+    char()
+    |> list_of()
+  end
+
+  defp generate({:type, _, :bitstring, []}) do
+    bitstring()
+  end
+
+  defp generate({:type, _, :binary, []}) do
+    binary()
+  end
+
+  defp generate({:type, _, :nonempty_string, []}) do
+    char()
+    |> list_of()
+    |> nonempty()
+  end
+
+  defp generate({:remote_type, _, [{:atom, _, module}, {:atom, _, type}, []]}) do
+    from_type(module, type)
+  end
+
+  defp generate({:type, _, :iolist, []}) do
+    iolist()
+  end
+
+  defp generate({:type, _, :iodata, []}) do
+    iodata()
+  end
+
+  defp generate({:type, _, :mfa, []}) do
+    module = atom(:alphanumeric)
+    function = atom(:alphanumeric)
+    arity = integer(0..255)
+
+    tuple({module, function, arity})
+  end
+
+  defp generate({:type, _, x, []}) when x in [:module, :node] do
+    atom(:alphanumeric)
+  end
+
+  defp generate({:type, _, :number, []}) do
+    one_of([
+      integer(),
+      float()
+    ])
+  end
+
+  defp generate({:type, _, :timeout, []}) do
+    one_of([
+      integer(),
+      constant(:infinity)
+    ])
+  end
+
+  defp char() do
+    integer(0..0x10FFFF)
+  end
 end

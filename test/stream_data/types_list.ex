@@ -23,6 +23,15 @@ defmodule StreamDataTest.TypesList do
           nonempty_maybe_improper_list(integer(), float())
 
   ## Literals
+  @type literal_atom() :: :atom
+  @type literal_special_atom() :: false
+  @type literal_integer() :: 1
+  @type literal_integers() :: 1..10
+  @type literal_empty_bitstring() :: <<>>
+  @type literal_size_0() :: <<_::0>>
+  @type literal_unit_1() :: <<_::_*1>>
+  @type literal_size_1_unit_8() :: <<_::1, _::_*8>>
+
   # Lists
   @type literal_list_type() :: [integer()]
   @type literal_empty_list() :: []

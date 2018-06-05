@@ -225,6 +225,19 @@ defmodule StreamDataTypes do
     end)
   end
 
+  defp generate({type, _, literal}) when type in [:atom, :integer] do
+    constant(literal)
+  end
+
+  defp generate({:type, _, :range, [{:integer, _, lower}, {:integer, _, upper}]}) do
+    integer(lower..upper)
+  end
+
+  defp generate({:type, _, :binary, [{:integer, _, size}, {:integer, _, unit}]}) do
+    # Not sure this is right
+    bitstring(length: size * unit)
+  end
+
   ## Built-in types
   defp generate({:type, _, :arity, []}) do
     integer(0..255)

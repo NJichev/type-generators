@@ -337,6 +337,71 @@ defmodule StreamData.TypesTest do
         assert is_float(float)
       end
     end
+
+    test "atom" do
+      data = generate_data(:literal_atom)
+
+      check all x <- data do
+        assert x == :atom
+      end
+    end
+
+    test "special atom" do
+      data = generate_data(:literal_special_atom)
+
+      check all x <- data do
+        assert x == false
+      end
+    end
+
+    test "integer" do
+      data = generate_data(:literal_integer)
+
+      check all x <- data do
+        assert x == 1
+      end
+    end
+
+    test "range" do
+      data = generate_data(:literal_integers)
+
+      check all x <- data do
+        assert is_integer(x)
+        assert x in 0..10
+      end
+    end
+
+    test "bitstrings" do
+      data = generate_data(:literal_empty_bitstring)
+
+      check all x <- data do
+        assert x == ""
+      end
+    end
+
+    test "bitstrings with size 0" do
+      data = generate_data(:literal_size_0)
+
+      check all x <- data do
+        assert "" == x
+      end
+    end
+
+    test "bitstrings with unit 1" do
+      data = generate_data(:literal_unit_1)
+
+      check all x <- data do
+        assert x == ""
+      end
+    end
+
+    test "bitstrings with size 1 and unit 8" do
+      data = generate_data(:literal_size_1_unit_8)
+
+      check all x <- data do
+        assert <<_::1*8>> = x
+      end
+    end
   end
 
   describe "built-in" do

@@ -36,6 +36,13 @@ defmodule StreamData.TypesTest do
   end
 
   describe "basic types" do
+    test "atom" do
+      data = generate_data(:basic_atom)
+
+      check all x <- data, do: assert(is_atom(x))
+    end
+
+    # Numbers
     test "float" do
       data = generate_data(:basic_float)
 

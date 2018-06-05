@@ -1,5 +1,6 @@
 defmodule StreamDataTest.TypesList do
   @type basic_atom :: atom()
+  @type basic_reference :: reference()
 
   # Numbers
   @type basic_float() :: float()

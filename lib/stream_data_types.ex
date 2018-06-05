@@ -20,7 +20,8 @@ defmodule StreamDataTypes do
 
   ## Shrinking(TODO(njichev))
   """
-  def from_type(module, name, args \\ []) when is_atom(module) and is_atom(name) and is_list(args) do
+  def from_type(module, name, args \\ [])
+      when is_atom(module) and is_atom(name) and is_list(args) do
     type = for pair = {^name, _type} <- beam_types(module), do: pair
 
     # pick correct type, when multiple
@@ -107,10 +108,63 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:type, _, :non_neg_integer, _}) do
-    map(integer(), &(abs(&1)))
+    map(integer(), &abs(&1))
   end
 
   defp generate({:type, _, :float, _}) do
     float()
+  end
+
+  defp generate({:type, _, :list, []}) do
+    term()
+    |> list_of()
+  end
+
+  defp generate({:type, _, :list, [type]}) do
+    generate(type)
+    |> list_of()
+  end
+
+  defp generate({:type, _, :nonempty_list, [type]}) do
+    generate(type)
+    |> list_of()
+    |> nonempty()
+  end
+
+  defp generate({:type, _, :maybe_improper_list, []}) do
+    maybe_improper_list_of(
+      term(),
+      term()
+    )
+  end
+
+  defp generate({:type, _, :maybe_improper_list, [type1, type2]}) do
+    maybe_improper_list_of(
+      generate(type1),
+      generate(type2)
+    )
+  end
+
+  defp generate({:type, _, :nonempty_improper_list, [type1, type2]}) do
+    nonempty_improper_list_of(
+      generate(type1),
+      generate(type2)
+    )
+  end
+
+  defp generate({:type, _, :nonempty_maybe_improper_list, []}) do
+    maybe_improper_list_of(
+      term(),
+      term()
+    )
+    |> nonempty()
+  end
+
+  defp generate({:type, _, :nonempty_maybe_improper_list, [type1, type2]}) do
+    maybe_improper_list_of(
+      generate(type1),
+      generate(type2)
+    )
+    |> nonempty()
   end
 end

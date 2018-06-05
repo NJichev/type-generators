@@ -7,7 +7,7 @@ defmodule StreamData.TypesTest do
   test "raises when missing a type" do
     assert_raise(
       ArgumentError,
-       "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
+      "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
       fn -> generate_data(:does_not_exist) end
     )
   end
@@ -26,13 +26,9 @@ defmodule StreamData.TypesTest do
   end
 
   test "raises when wrong number of arguments given" do
-    assert_raise(
-      ArgumentError,
-      "Wrong amount of arguments passed.",
-      fn ->
-        generate_data(:basic_atom, v: :integer)
-      end
-    )
+    assert_raise(ArgumentError, "Wrong amount of arguments passed.", fn ->
+      generate_data(:basic_atom, v: :integer)
+    end)
   end
 
   describe "basic types" do
@@ -75,6 +71,94 @@ defmodule StreamData.TypesTest do
         assert is_integer(x)
         assert x < 0
       end
+    end
+
+    test "lists" do
+      data = generate_data(:basic_list_type)
+
+      check all list <- data, max_runs: 25 do
+        assert is_list(list)
+        assert Enum.all?(list, fn x -> is_integer(x) end)
+      end
+    end
+
+    test "basic nonempty list" do
+      data = generate_data(:basic_nonempty_list_type)
+
+      check all list <- data, max_runs: 25 do
+        assert is_list(list)
+        assert length(list) > 0
+        assert Enum.all?(list, fn x -> is_integer(x) end)
+      end
+    end
+
+    test "maybe_improper_list" do
+      data = generate_data(:basic_maybe_improper_list_type)
+
+      check all list <- data do
+        each_improper_list(list, &assert(is_integer(&1)), &assert(is_float(&1) or is_integer(&1)))
+      end
+    end
+
+    test "nonempty_improper_list" do
+      data = generate_data(:basic_nonempty_improper_list_type)
+
+      check all list <- data do
+        assert list != []
+        each_improper_list(list, &assert(is_integer(&1)), &assert(is_float(&1)))
+      end
+    end
+
+    test "nonempty_maybe_improper_list" do
+      data = generate_data(:basic_nonempty_maybe_improper_list_type)
+
+      check all list <- data do
+        assert list != []
+        each_improper_list(list, &assert(is_integer(&1)), &assert(is_float(&1) or is_integer(&1)))
+      end
+    end
+
+    test "nested lists" do
+      data = generate_data(:nested_list_type)
+
+      check all list <- data, max_runs: 25 do
+        assert is_list(list)
+
+        Enum.each(list, fn x ->
+          assert is_list(x)
+          assert Enum.all?(x, &is_integer(&1))
+        end)
+      end
+    end
+
+    test "nested nonempty list" do
+      data = generate_data(:nested_nonempty_list_type)
+
+      check all list <- data, max_runs: 25 do
+        assert is_list(list)
+        assert length(list) > 0
+
+        Enum.each(list, fn x ->
+          assert is_list(x)
+          assert Enum.all?(x, &is_integer(&1))
+        end)
+      end
+    end
+  end
+
+  defp each_improper_list([], _head_fun, _tail_fun), do: :ok
+
+  defp each_improper_list([elem], _head_fun, tail_fun) do
+    tail_fun.(elem)
+  end
+
+  defp each_improper_list([head | tail], head_fun, tail_fun) do
+    head_fun.(head)
+
+    if is_list(tail) do
+      each_improper_list(tail, head_fun, tail_fun)
+    else
+      tail_fun.(tail)
     end
   end
 

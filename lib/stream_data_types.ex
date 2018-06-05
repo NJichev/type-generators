@@ -113,4 +113,42 @@ defmodule StreamDataTypes do
   defp generate({:type, _, :float, _}) do
     float()
   end
+
+  defp generate({:type, _, :map, []}) do
+    constant(%{})
+  end
+
+  defp generate({:type, _, :map, field_types}) do
+    field_types
+    |> Enum.map(&generate_map_field/1)
+    |> Enum.reduce(fn x, acc ->
+      bind(acc, fn map1 ->
+        bind(x, fn map2 ->
+          Map.merge(map2, map1)
+          |> constant()
+        end)
+      end)
+    end)
+  end
+
+  defp generate_map_field({:type, _, :map_field_exact, [{_, _, key}, value]}) do
+    value = generate(value)
+
+    fixed_map(%{key => value})
+  end
+
+  defp generate_map_field({:type, _, :map_field_exact, [key, value]}) do
+    map_of(
+      generate(key),
+      generate(value)
+    )
+    |> filter(&(&1 != %{}))
+  end
+
+  defp generate_map_field({:type, _, :map_field_assoc, [key, value]}) do
+    map_of(
+      generate(key),
+      generate(value)
+    )
+ end
 end

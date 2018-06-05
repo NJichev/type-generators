@@ -78,6 +78,64 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "literals" do
+    test "empty map" do
+      data = generate_data(:literal_empty_map)
+
+      check all x <- data do
+        assert x == %{}
+      end
+    end
+
+    test "map with fixed key" do
+      data = generate_data(:literal_map_with_key)
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+        %{key: int} = x
+        assert is_integer(int)
+      end
+    end
+
+    test "map with optional key" do
+      data = generate_data(:literal_map_with_optional_key)
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+
+        assert Map.keys(x) |> Enum.all?(fn k -> is_float(k) end)
+        assert Map.values(x) |> Enum.all?(fn v -> is_integer(v) end)
+      end
+    end
+
+    test "map with required keys" do
+      data = generate_data(:literal_map_with_required_key)
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+        assert x != %{}
+
+        assert Map.keys(x) |> Enum.all?(fn k -> is_float(k) end)
+        assert Map.values(x) |> Enum.all?(fn v -> is_integer(v) end)
+      end
+    end
+
+    test "map with required and optional key" do
+      data = generate_data(:literal_map_with_required_and_optional_key)
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+
+        %{key: int} = x
+        map = Map.delete(x, :key)
+        assert is_integer(int)
+
+        assert Map.keys(map) |> Enum.all?(fn k -> is_float(k) end)
+        assert Map.values(map) |> Enum.all?(fn v -> is_integer(v) end)
+      end
+    end
+  end
+
   defp generate_data(name, args \\ []) do
     Types.from_type(StreamDataTest.TypesList, name, args)
   end

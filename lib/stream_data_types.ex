@@ -129,14 +129,12 @@ defmodule StreamDataTypes do
 
   defp generate({:type, _, :nonempty_list, []}) do
     term()
-    |> list_of()
-    |> nonempty()
+    |> list_of(min_length: 1)
   end
 
   defp generate({:type, _, :nonempty_list, [type]}) do
     generate(type)
-    |> list_of()
-    |> nonempty()
+    |> list_of(min_length: 1)
   end
 
   defp generate({:type, _, :maybe_improper_list, []}) do

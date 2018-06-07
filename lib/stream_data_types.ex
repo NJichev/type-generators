@@ -122,6 +122,10 @@ defmodule StreamDataTypes do
     float()
   end
 
+  defp generate({:type, _, :reference, _}) do
+    map(constant(:unused), fn _ -> make_ref() end)
+  end
+ 
   defp generate({:type, _, :map, :any}) do
     map_of(term(), term())
   end

@@ -59,6 +59,12 @@ defmodule StreamData.TypesTest do
       end
     end
   
+    test "reference" do
+      data = generate_data(:basic_reference)
+
+      check all x <- data, do: assert(is_reference(x))
+    end
+    
     # Numbers
     test "float" do
       data = generate_data(:basic_float)

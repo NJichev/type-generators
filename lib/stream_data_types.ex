@@ -20,7 +20,8 @@ defmodule StreamDataTypes do
 
   ## Shrinking(TODO(njichev))
   """
-  def from_type(module, name, args \\ []) when is_atom(module) and is_atom(name) and is_list(args) do
+  def from_type(module, name, args \\ [])
+      when is_atom(module) and is_atom(name) and is_list(args) do
     type = for pair = {^name, _type} <- beam_types(module), do: pair
 
     # pick correct type, when multiple
@@ -107,7 +108,7 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:type, _, :non_neg_integer, _}) do
-    map(integer(), &(abs(&1)))
+    map(integer(), &abs(&1))
   end
 
   defp generate({:type, _, :float, _}) do
@@ -140,9 +141,9 @@ defmodule StreamDataTypes do
   defp generate_map_field({:type, _, :map_field_exact, [key, value]}) do
     map_of(
       generate(key),
-      generate(value)
+      generate(value),
+      min_length: 1
     )
-    |> filter(&(&1 != %{}))
   end
 
   defp generate_map_field({:type, _, :map_field_assoc, [key, value]}) do
@@ -150,5 +151,5 @@ defmodule StreamDataTypes do
       generate(key),
       generate(value)
     )
- end
+  end
 end

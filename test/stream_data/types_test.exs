@@ -32,6 +32,20 @@ defmodule StreamData.TypesTest do
   end
 
   describe "basic types" do
+    test "any" do
+      data = generate_data(:basic_any)
+
+      check all term <- data, max_runs: 25 do
+        assert is_term(term)
+      end
+    end
+
+    test "atom" do
+      data = generate_data(:basic_atom)
+
+      check all x <- data, do: assert(is_atom(x))
+    end
+    
     test "map" do
       data = generate_data(:basic_map)
 
@@ -44,7 +58,8 @@ defmodule StreamData.TypesTest do
         assert is_map(x)
       end
     end
-
+  
+    # Numbers
     test "float" do
       data = generate_data(:basic_float)
 
@@ -85,6 +100,21 @@ defmodule StreamData.TypesTest do
         assert x < 0
       end
     end
+  end
+
+  describe "built-in" do
+    test "term" do
+      data = generate_data(:builtin_term)
+
+      check all term <- data, max_runs: 25 do
+        assert is_term(term)
+      end
+    end
+  end
+
+  defp is_term(t) do
+    is_boolean(t) or is_integer(t) or is_float(t) or is_binary(t) or is_atom(t) or is_reference(t) or
+      is_list(t) or is_map(t) or is_tuple(t)
   end
 
   defp generate_data(name, args \\ []) do

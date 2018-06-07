@@ -94,6 +94,10 @@ defmodule StreamDataTypes do
     generate(type)
   end
 
+  defp generate({:type, _, :atom, _}) do
+    atom(:alphanumeric)
+  end
+
   defp generate({:type, _, :integer, _}) do
     integer()
   end

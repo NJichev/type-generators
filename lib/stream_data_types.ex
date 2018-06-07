@@ -126,7 +126,66 @@ defmodule StreamDataTypes do
   defp generate({:type, _, :reference, _}) do
     map(constant(:unused), fn _ -> make_ref() end)
   end
- 
+
+  defp generate({:type, _, :list, []}) do
+    term()
+    |> list_of()
+  end
+
+  defp generate({:type, _, :list, [type]}) do
+    generate(type)
+    |> list_of()
+  end
+
+  defp generate({:type, _, nil, []}), do: constant([])
+
+  defp generate({:type, _, :nonempty_list, []}) do
+    term()
+    |> list_of(min_length: 1)
+  end
+
+  defp generate({:type, _, :nonempty_list, [type]}) do
+    generate(type)
+    |> list_of(min_length: 1)
+  end
+
+  defp generate({:type, _, :maybe_improper_list, []}) do
+    maybe_improper_list_of(
+      term(),
+      term()
+    )
+  end
+
+  defp generate({:type, _, :maybe_improper_list, [type1, type2]}) do
+    maybe_improper_list_of(
+      generate(type1),
+      generate(type2)
+    )
+  end
+
+  defp generate({:type, _, :nonempty_improper_list, [type1, type2]}) do
+    nonempty_improper_list_of(
+      generate(type1),
+      generate(type2)
+    )
+  end
+
+  defp generate({:type, _, :nonempty_maybe_improper_list, []}) do
+    maybe_improper_list_of(
+      term(),
+      term()
+    )
+    |> nonempty()
+  end
+
+  defp generate({:type, _, :nonempty_maybe_improper_list, [type1, type2]}) do
+    maybe_improper_list_of(
+      generate(type1),
+      generate(type2)
+    )
+    |> nonempty()
+  end
+
   defp generate({:type, _, :map, :any}) do
     map_of(term(), term())
   end

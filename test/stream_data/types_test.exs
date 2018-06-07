@@ -32,6 +32,40 @@ defmodule StreamData.TypesTest do
   end
 
   describe "basic types" do
+    test "any" do
+      data = generate_data(:basic_any)
+
+      check all term <- data, max_runs: 25 do
+        assert is_term(term)
+      end
+    end
+
+    test "atom" do
+      data = generate_data(:basic_atom)
+
+      check all x <- data, do: assert(is_atom(x))
+    end
+
+    test "map" do
+      data = generate_data(:basic_map)
+
+      # Check that not all generated maps are empty
+      assert Enum.take(data, 5)
+             |> Enum.map(&map_size(&1))
+             |> Enum.sum() > 0
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+      end
+    end
+
+    test "reference" do
+      data = generate_data(:basic_reference)
+
+      check all x <- data, do: assert(is_reference(x))
+    end
+
+    # Numbers
     test "float" do
       data = generate_data(:basic_float)
 
@@ -146,44 +180,6 @@ defmodule StreamData.TypesTest do
     end
   end
 
-  describe "literals" do
-    test "list type" do
-      data = generate_data(:literal_list_type)
-
-      check all x <- data do
-        assert is_list(x)
-        assert Enum.all?(x, &is_integer(&1))
-      end
-    end
-
-    test "empty list" do
-      data = generate_data(:literal_empty_list)
-
-      check all x <- data do
-        assert x == []
-      end
-    end
-
-    test "nonempty list" do
-      data = generate_data(:literal_list_nonempty)
-
-      check all x <- data, max_runs: 25 do
-        assert is_list(x)
-        assert x != []
-      end
-    end
-
-    test "nonempty list with type" do
-      data = generate_data(:literal_nonempty_list_type)
-
-      check all x <- data, max_runs: 25 do
-        assert is_list(x)
-        assert x != []
-        assert Enum.all?(x, &is_float(&1))
-      end
-    end
-  end
-
   describe "builtin" do
     test "list" do
       data = generate_data(:builtin_list)
@@ -236,12 +232,116 @@ defmodule StreamData.TypesTest do
     end
   end
 
-  defp generate_data(name, args \\ []) do
-    Types.from_type(StreamDataTest.TypesList, name, args)
+  describe "literals" do
+    test "list type" do
+      data = generate_data(:literal_list_type)
+
+      check all x <- data do
+        assert is_list(x)
+        assert Enum.all?(x, &is_integer(&1))
+      end
+    end
+
+    test "empty list" do
+      data = generate_data(:literal_empty_list)
+
+      check all x <- data do
+        assert x == []
+      end
+    end
+
+    test "nonempty list" do
+      data = generate_data(:literal_list_nonempty)
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+        assert x != []
+      end
+    end
+
+    test "nonempty list with type" do
+      data = generate_data(:literal_nonempty_list_type)
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+        assert x != []
+        assert Enum.all?(x, &is_float(&1))
+      end
+    end
+
+    test "empty map" do
+      data = generate_data(:literal_empty_map)
+
+      check all x <- data do
+        assert x == %{}
+      end
+    end
+
+    test "map with fixed key" do
+      data = generate_data(:literal_map_with_key)
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+        %{key: int} = x
+        assert is_integer(int)
+      end
+    end
+
+    test "map with optional key" do
+      data = generate_data(:literal_map_with_optional_key)
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+
+        assert Map.keys(x) |> Enum.all?(fn k -> is_float(k) end)
+        assert Map.values(x) |> Enum.all?(fn v -> is_integer(v) end)
+      end
+    end
+
+    test "map with required keys" do
+      data = generate_data(:literal_map_with_required_key)
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+        assert x != %{}
+
+        assert Map.keys(x) |> Enum.all?(fn k -> is_float(k) end)
+        assert Map.values(x) |> Enum.all?(fn v -> is_integer(v) end)
+      end
+    end
+
+    test "map with required and optional key" do
+      data = generate_data(:literal_map_with_required_and_optional_key)
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+
+        %{key: int} = x
+        map = Map.delete(x, :key)
+        assert is_integer(int)
+
+        assert Map.keys(map) |> Enum.all?(fn k -> is_float(k) end)
+        assert Map.values(map) |> Enum.all?(fn v -> is_integer(v) end)
+      end
+    end
+  end
+
+  describe "built-in" do
+    test "term" do
+      data = generate_data(:builtin_term)
+
+      check all term <- data, max_runs: 25 do
+        assert is_term(term)
+      end
+    end
   end
 
   defp is_term(t) do
     is_boolean(t) or is_integer(t) or is_float(t) or is_binary(t) or is_atom(t) or is_reference(t) or
       is_list(t) or is_map(t) or is_tuple(t)
+  end
+
+  defp generate_data(name, args \\ []) do
+    Types.from_type(StreamDataTest.TypesList, name, args)
   end
 end

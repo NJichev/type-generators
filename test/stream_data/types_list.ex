@@ -1,6 +1,7 @@
 defmodule StreamDataTest.TypesList do
   @type basic_any() :: any()
-  @type basic_atom() :: atom()
+  @type basic_atom :: atom()
+  @type basic_map :: map()
 
   # Numbers
   @type basic_float() :: float()

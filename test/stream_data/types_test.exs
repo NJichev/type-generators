@@ -45,7 +45,20 @@ defmodule StreamData.TypesTest do
 
       check all x <- data, do: assert(is_atom(x))
     end
+    
+    test "map" do
+      data = generate_data(:basic_map)
 
+      # Check that not all generated maps are empty
+      assert Enum.take(data, 5)
+             |> Enum.map(&map_size(&1))
+             |> Enum.sum() > 0
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+      end
+    end
+  
     # Numbers
     test "float" do
       data = generate_data(:basic_float)

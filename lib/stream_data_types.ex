@@ -93,6 +93,14 @@ defmodule StreamDataTypes do
   defp generate_from_type({_name, type}, _args) do
     generate(type)
   end
+  
+  defp generate({:type, _, type, _}) when type in [:any, :term] do
+    term()
+  end
+
+  defp generate({:type, _, :atom, _}) do
+    atom(:alphanumeric)
+  end
 
   defp generate({:type, _, :integer, _}) do
     integer()
@@ -116,5 +124,9 @@ defmodule StreamDataTypes do
 
   defp generate({:type, _, :reference, _}) do
     map(constant(:unused), fn _ -> make_ref() end)
+  end
+ 
+  defp generate({:type, _, :map, :any}) do
+    map_of(term(), term())
   end
 end

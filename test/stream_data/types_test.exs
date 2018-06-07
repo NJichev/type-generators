@@ -7,7 +7,7 @@ defmodule StreamData.TypesTest do
   test "raises when missing a type" do
     assert_raise(
       ArgumentError,
-       "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
+      "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
       fn -> generate_data(:does_not_exist) end
     )
   end
@@ -26,22 +26,46 @@ defmodule StreamData.TypesTest do
   end
 
   test "raises when wrong number of arguments given" do
-    assert_raise(
-      ArgumentError,
-      "Wrong amount of arguments passed.",
-      fn ->
-        generate_data(:basic_atom, v: :integer)
-      end
-    )
+    assert_raise(ArgumentError, "Wrong amount of arguments passed.", fn ->
+      generate_data(:basic_atom, v: :integer)
+    end)
   end
 
   describe "basic types" do
+    test "any" do
+      data = generate_data(:basic_any)
+
+      check all term <- data, max_runs: 25 do
+        assert is_term(term)
+      end
+    end
+
+    test "atom" do
+      data = generate_data(:basic_atom)
+
+      check all x <- data, do: assert(is_atom(x))
+    end
+    
+    test "map" do
+      data = generate_data(:basic_map)
+
+      # Check that not all generated maps are empty
+      assert Enum.take(data, 5)
+             |> Enum.map(&map_size(&1))
+             |> Enum.sum() > 0
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+      end
+    end
+  
     test "reference" do
       data = generate_data(:basic_reference)
 
       check all x <- data, do: assert(is_reference(x))
     end
-
+    
+    # Numbers
     test "float" do
       data = generate_data(:basic_float)
 
@@ -82,6 +106,21 @@ defmodule StreamData.TypesTest do
         assert x < 0
       end
     end
+  end
+
+  describe "built-in" do
+    test "term" do
+      data = generate_data(:builtin_term)
+
+      check all term <- data, max_runs: 25 do
+        assert is_term(term)
+      end
+    end
+  end
+
+  defp is_term(t) do
+    is_boolean(t) or is_integer(t) or is_float(t) or is_binary(t) or is_atom(t) or is_reference(t) or
+      is_list(t) or is_map(t) or is_tuple(t)
   end
 
   defp generate_data(name, args \\ []) do

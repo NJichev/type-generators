@@ -1,6 +1,5 @@
 defmodule StreamDataTypes do
   import StreamData
-  alias StreamData.LazyTree
 
   @doc """
   Returns any kind of generator by a given type definition.
@@ -116,9 +115,6 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:type, _, :reference, _}) do
-    generator = fn _seed, _size ->
-      %LazyTree{root: make_ref()}
-    end
-    %StreamData{generator: generator}
+    map(constant(:unused), fn _ -> make_ref() end)
   end
 end

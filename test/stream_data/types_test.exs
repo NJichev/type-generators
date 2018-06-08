@@ -391,7 +391,7 @@ defmodule StreamData.TypesTest do
       data = generate_data(:literal_unit_1)
 
       check all x <- data do
-        assert x == ""
+        assert is_bitstring(x)
       end
     end
 
@@ -399,7 +399,8 @@ defmodule StreamData.TypesTest do
       data = generate_data(:literal_size_1_unit_8)
 
       check all x <- data do
-        assert <<_::1*8>> = x
+        size = bit_size(x)
+        assert rem(size, 8) == 1
       end
     end
   end

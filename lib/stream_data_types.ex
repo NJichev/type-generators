@@ -103,7 +103,7 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:type, _, :neg_integer, _}) do
-    map(positive_integer(), &(-1 * &1))
+    non_negative_integer()
   end
 
   defp generate({:type, _, :non_neg_integer, _}) do
@@ -147,8 +147,7 @@ defmodule StreamDataTypes do
 
   defp generate({:type, _, :nonempty_string, []}) do
     char()
-    |> list_of()
-    |> nonempty()
+    |> list_of(min_length: 1)
   end
 
   defp generate({:remote_type, _, [{:atom, _, module}, {:atom, _, type}, []]}) do
@@ -164,15 +163,15 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:type, _, :mfa, []}) do
-    module = atom(:alphanumeric)
-    function = atom(:alphanumeric)
+    module = one_of([atom(:alphanumeric), atom(:alias)])
+    function = one_of([atom(:alphanumeric), atom(:alias)])
     arity = integer(0..255)
 
     tuple({module, function, arity})
   end
 
   defp generate({:type, _, x, []}) when x in [:module, :node] do
-    atom(:alphanumeric)
+    one_of([atom(:alphanumeric), atom(:alias)])
   end
 
   defp generate({:type, _, :number, []}) do
@@ -183,13 +182,17 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:type, _, :timeout, []}) do
-    one_of([
-      integer(),
-      constant(:infinity)
+    frequency([
+      {9, non_negative_integer()},
+      {1, constant(:infinity)}
     ])
   end
 
   defp char() do
     integer(0..0x10FFFF)
+  end
+
+  defp non_negative_integer() do
+    map(positive_integer(), &(-1 * &1))
   end
 end

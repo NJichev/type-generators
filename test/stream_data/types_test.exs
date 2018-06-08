@@ -173,7 +173,6 @@ defmodule StreamData.TypesTest do
       end
     end
 
-
     test "module" do
       data = generate_data(:builtin_module)
 

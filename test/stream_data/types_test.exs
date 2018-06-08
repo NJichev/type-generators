@@ -323,6 +323,24 @@ defmodule StreamData.TypesTest do
       end
     end
 
+    test "struct with all fields any type" do
+      data = generate_data(:literal_struct_all_fields_any_type)
+
+      check all x <- data, max_runs: 25 do
+        assert %StreamDataTest.TypesList.SomeStruct{key: value} = x
+        assert is_term(value)
+      end
+    end
+
+    test "struct with all fields key type" do
+      data = generate_data(:literal_struct_all_fields_key_type)
+
+      check all x <- data, max_runs: 25 do
+        assert %StreamDataTest.TypesList.SomeStruct{key: value} = x
+        assert is_integer(value)
+      end
+    end
+
     test "empty tuple" do
       data = generate_data(:literal_empty_tuple)
 

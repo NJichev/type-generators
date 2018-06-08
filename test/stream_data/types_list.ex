@@ -1,4 +1,8 @@
 defmodule StreamDataTest.TypesList do
+  defmodule SomeStruct do
+    defstruct [:key]
+  end
+
   ## Basic
   @type basic_any() :: any()
   @type basic_atom :: atom()
@@ -50,6 +54,8 @@ defmodule StreamDataTest.TypesList do
           :key => integer(),
           optional(float()) => integer()
         }
+  @type literal_struct_all_fields_any_type() :: %SomeStruct{}
+  @type literal_struct_all_fields_key_type() :: %SomeStruct{key: integer()}
 
   # Tuple
   @type literal_empty_tuple() :: {}

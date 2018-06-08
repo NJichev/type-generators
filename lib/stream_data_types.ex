@@ -20,7 +20,8 @@ defmodule StreamDataTypes do
 
   ## Shrinking(TODO(njichev))
   """
-  def from_type(module, name, args \\ []) when is_atom(module) and is_atom(name) and is_list(args) do
+  def from_type(module, name, args \\ [])
+      when is_atom(module) and is_atom(name) and is_list(args) do
     type = for pair = {^name, _type} <- beam_types(module), do: pair
 
     # pick correct type, when multiple
@@ -93,6 +94,19 @@ defmodule StreamDataTypes do
   defp generate_from_type({_name, type}, _args) do
     generate(type)
   end
+  
+  defp generate({:type, _, type, _}) when type in [:any, :term] do
+    term()
+  end
+
+  defp generate({:type, _, :atom, _}) do
+    atom(:alphanumeric)
+  end
+
+  defp generate({:type, _, bottom, _}) when bottom in [:none, :no_return] do
+    raise ArgumentError, "Cannot generate types of the none type."
+  end
+
 
   defp generate({:type, _, :integer, _}) do
     integer()
@@ -107,13 +121,97 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:type, _, :non_neg_integer, _}) do
-    map(integer(), &(abs(&1)))
+    map(integer(), &abs(&1))
   end
 
   defp generate({:type, _, :float, _}) do
     float()
   end
 
+  defp generate({:type, _, :reference, _}) do
+    map(constant(:unused), fn _ -> make_ref() end)
+  end
+
+  defp generate({:type, _, :list, []}) do
+    term()
+    |> list_of()
+  end
+
+  defp generate({:type, _, :list, [type]}) do
+    generate(type)
+    |> list_of()
+  end
+
+  defp generate({:type, _, nil, []}), do: constant([])
+
+  defp generate({:type, _, :nonempty_list, []}) do
+    term()
+    |> list_of(min_length: 1)
+  end
+
+  defp generate({:type, _, :nonempty_list, [type]}) do
+    generate(type)
+    |> list_of(min_length: 1)
+  end
+
+  defp generate({:type, _, :maybe_improper_list, []}) do
+    maybe_improper_list_of(
+      term(),
+      term()
+    )
+  end
+
+  defp generate({:type, _, :maybe_improper_list, [type1, type2]}) do
+    maybe_improper_list_of(
+      generate(type1),
+      generate(type2)
+    )
+  end
+
+  defp generate({:type, _, :nonempty_improper_list, [type1, type2]}) do
+    nonempty_improper_list_of(
+      generate(type1),
+      generate(type2)
+    )
+  end
+
+  defp generate({:type, _, :nonempty_maybe_improper_list, []}) do
+    maybe_improper_list_of(
+      term(),
+      term()
+    )
+    |> nonempty()
+  end
+
+  defp generate({:type, _, :nonempty_maybe_improper_list, [type1, type2]}) do
+    maybe_improper_list_of(
+      generate(type1),
+      generate(type2)
+    )
+    |> nonempty()
+  end
+
+  defp generate({:type, _, :map, :any}) do
+    map_of(term(), term())
+  end
+
+  defp generate({:type, _, :map, []}) do
+    constant(%{})
+  end
+
+  defp generate({:type, _, :map, field_types}) do
+    field_types
+    |> Enum.map(&generate_map_field/1)
+    |> Enum.reduce(fn x, acc ->
+      bind(acc, fn map1 ->
+        bind(x, fn map2 ->
+          Map.merge(map2, map1)
+          |> constant()
+        end)
+      end)
+    end)
+  end
+  
   ## Built-in types
   defp generate({:type, _, :arity, []}) do
     integer(0..255)
@@ -194,5 +292,26 @@ defmodule StreamDataTypes do
 
   defp non_negative_integer() do
     map(positive_integer(), &(-1 * &1))
+  end
+
+  defp generate_map_field({:type, _, :map_field_exact, [{_, _, key}, value]}) do
+    value = generate(value)
+
+    fixed_map(%{key => value})
+  end
+
+  defp generate_map_field({:type, _, :map_field_exact, [key, value]}) do
+    map_of(
+      generate(key),
+      generate(value),
+      min_length: 1
+    )
+  end
+
+  defp generate_map_field({:type, _, :map_field_assoc, [key, value]}) do
+    map_of(
+      generate(key),
+      generate(value)
+    )
   end
 end

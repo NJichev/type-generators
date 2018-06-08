@@ -1,6 +1,7 @@
 defmodule StreamDataTest.TypesList do
   @type basic_any() :: any()
   @type basic_atom :: atom()
+  @type basic_none() :: none()
   @type basic_reference :: reference()
   @type basic_map :: map()
 
@@ -38,6 +39,7 @@ defmodule StreamDataTest.TypesList do
 
   ## Built-in
   @type builtin_term() :: term()
+  @type builtin_no_return :: no_return()
 
   # Lists
   @type builtin_list() :: list()

@@ -32,6 +32,14 @@ defmodule StreamData.TypesTest do
   end
 
   describe "basic types" do
+    test "none" do
+      assert_raise(
+        ArgumentError,
+        "Cannot generate types of the none type.",
+        fn -> generate_data(:basic_none) end
+      )
+    end
+
     test "any" do
       data = generate_data(:basic_any)
 
@@ -333,6 +341,14 @@ defmodule StreamData.TypesTest do
       check all term <- data, max_runs: 25 do
         assert is_term(term)
       end
+    end
+
+    test "no_return" do
+      assert_raise(
+        ArgumentError,
+        "Cannot generate types of the none type.",
+        fn -> generate_data(:builtin_no_return) end
+      )
     end
   end
 

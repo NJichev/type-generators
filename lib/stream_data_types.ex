@@ -103,7 +103,7 @@ defmodule StreamDataTypes do
     atom(:alphanumeric)
   end
 
-  defp generate({:type, _, bottom, _}) when bottom in [:none, :no_return] do
+  defp generate({:type, _, type, _}) when type in [:none, :no_return] do
     raise ArgumentError, "Cannot generate types of the none type."
   end
 

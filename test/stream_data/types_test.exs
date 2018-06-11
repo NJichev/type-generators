@@ -65,6 +65,15 @@ defmodule StreamData.TypesTest do
       end
     end
 
+    test "struct" do
+      data = generate_data(:basic_struct)
+
+      check all x <- data, max_runs: 25 do
+        assert is_map(x)
+        assert %_{} = x
+      end
+    end
+
     test "reference" do
       data = generate_data(:basic_reference)
 

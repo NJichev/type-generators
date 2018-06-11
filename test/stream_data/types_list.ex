@@ -10,6 +10,7 @@ defmodule StreamDataTest.TypesList do
   @type basic_reference :: reference()
   @type basic_tuple() :: tuple()
   @type basic_map :: map()
+  @type basic_struct :: struct()
 
   # Numbers
   @type basic_float() :: float()

@@ -65,6 +65,14 @@ defmodule StreamData.TypesTest do
       end
     end
 
+    test "struct" do
+      data = generate_data(:basic_struct)
+
+      check all x <- data, max_runs: 25 do
+        assert %_{} = x
+      end
+    end
+
     test "reference" do
       data = generate_data(:basic_reference)
 
@@ -320,6 +328,24 @@ defmodule StreamData.TypesTest do
 
         assert Map.keys(map) |> Enum.all?(fn k -> is_float(k) end)
         assert Map.values(map) |> Enum.all?(fn v -> is_integer(v) end)
+      end
+    end
+
+    test "struct with all fields any type" do
+      data = generate_data(:literal_struct_all_fields_any_type)
+
+      check all x <- data, max_runs: 25 do
+        assert %StreamDataTest.TypesList.SomeStruct{key: value} = x
+        assert is_term(value)
+      end
+    end
+
+    test "struct with all fields key type" do
+      data = generate_data(:literal_struct_all_fields_key_type)
+
+      check all x <- data, max_runs: 25 do
+        assert %StreamDataTest.TypesList.SomeStruct{key: value} = x
+        assert is_integer(value)
       end
     end
 

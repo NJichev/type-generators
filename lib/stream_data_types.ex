@@ -116,11 +116,11 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:type, _, :neg_integer, _}) do
-    non_negative_integer()
+    map(positive_integer(), &(-1 * &1))
   end
 
   defp generate({:type, _, :non_neg_integer, _}) do
-    map(integer(), &abs(&1))
+    non_negative_integer()
   end
 
   defp generate({:type, _, :float, _}) do
@@ -225,6 +225,24 @@ defmodule StreamDataTypes do
     end)
   end
 
+  defp generate({type, _, literal}) when type in [:atom, :integer] do
+    constant(literal)
+  end
+
+  defp generate({:type, _, :range, [{:integer, _, lower}, {:integer, _, upper}]}) do
+    integer(lower..upper)
+  end
+
+  defp generate({:type, _, :binary, [{:integer, _, size}, {:integer, _, unit}]}) do
+    rest_length_in_bits = map(non_negative_integer(), &(&1 * unit))
+
+    bind(bitstring(length: size), fn prefix ->
+      bind(rest_length_in_bits, fn rest_length ->
+        map(bitstring(length: rest_length), &<<prefix::bitstring, &1::bitstring>>)
+      end)
+    end)
+  end
+
   ## Built-in types
   defp generate({:type, _, :arity, []}) do
     integer(0..255)
@@ -304,7 +322,7 @@ defmodule StreamDataTypes do
   end
 
   defp non_negative_integer() do
-    map(positive_integer(), &(-1 * &1))
+    map(integer(), &abs/1)
   end
 
   defp generate_map_field({:type, _, :map_field_exact, [{_, _, key}, value]}) do

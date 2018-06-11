@@ -33,11 +33,9 @@ defmodule StreamData.TypesTest do
 
   describe "basic types" do
     test "none" do
-      assert_raise(
-        ArgumentError,
-        "Cannot generate types of the none type.",
-        fn -> generate_data(:basic_none) end
-      )
+      assert_raise(ArgumentError, "Cannot generate types of the none type.", fn ->
+        generate_data(:basic_none)
+      end)
     end
 
     test "any" do
@@ -71,6 +69,14 @@ defmodule StreamData.TypesTest do
       data = generate_data(:basic_reference)
 
       check all x <- data, do: assert(is_reference(x))
+    end
+
+    test "tuple" do
+      data = generate_data(:basic_tuple)
+
+      check all x <- data, max_runs: 25 do
+        assert is_tuple(x)
+      end
     end
 
     # Numbers
@@ -224,22 +230,6 @@ defmodule StreamData.TypesTest do
     end
   end
 
-  defp each_improper_list([], _head_fun, _tail_fun), do: :ok
-
-  defp each_improper_list([elem], _head_fun, tail_fun) do
-    tail_fun.(elem)
-  end
-
-  defp each_improper_list([head | tail], head_fun, tail_fun) do
-    head_fun.(head)
-
-    if is_list(tail) do
-      each_improper_list(tail, head_fun, tail_fun)
-    else
-      tail_fun.(tail)
-    end
-  end
-
   describe "literals" do
     test "list type" do
       data = generate_data(:literal_list_type)
@@ -332,6 +322,21 @@ defmodule StreamData.TypesTest do
         assert Map.values(map) |> Enum.all?(fn v -> is_integer(v) end)
       end
     end
+
+    test "empty tuple" do
+      data = generate_data(:literal_empty_tuple)
+
+      check all x <- data, do: assert(x == {})
+    end
+
+    test "2 element tuple with fixed and random type" do
+      data = generate_data(:literal_2_element_tuple)
+
+      check all {int, float} <- data do
+        assert is_integer(int)
+        assert is_float(float)
+      end
+    end
   end
 
   describe "built-in" do
@@ -344,11 +349,9 @@ defmodule StreamData.TypesTest do
     end
 
     test "no_return" do
-      assert_raise(
-        ArgumentError,
-        "Cannot generate types of the none type.",
-        fn -> generate_data(:builtin_no_return) end
-      )
+      assert_raise(ArgumentError, "Cannot generate types of the none type.", fn ->
+        generate_data(:builtin_no_return)
+      end)
     end
 
     test "arity" do
@@ -425,7 +428,6 @@ defmodule StreamData.TypesTest do
       end
     end
 
-
     test "iolist" do
       data = generate_data(:builtin_iolist)
 
@@ -448,19 +450,19 @@ defmodule StreamData.TypesTest do
     test "module" do
       data = generate_data(:builtin_module)
 
-      check all x <- data, do: assert is_atom(x)
+      check all x <- data, do: assert(is_atom(x))
     end
 
     test "node" do
       data = generate_data(:builtin_node)
 
-      check all x <- data, do: assert is_atom(x)
+      check all x <- data, do: assert(is_atom(x))
     end
 
     test "number" do
       data = generate_data(:builtin_number)
 
-      check all x <- data, do: assert is_number(x)
+      check all x <- data, do: assert(is_number(x))
     end
 
     test "timeout" do
@@ -472,6 +474,22 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  defp each_improper_list([], _head_fun, _tail_fun), do: :ok
+
+  defp each_improper_list([elem], _head_fun, tail_fun) do
+    tail_fun.(elem)
+  end
+
+  defp each_improper_list([head | tail], head_fun, tail_fun) do
+    head_fun.(head)
+
+    if is_list(tail) do
+      each_improper_list(tail, head_fun, tail_fun)
+    else
+      tail_fun.(tail)
+    end
+  end
+
   defp is_term(t) do
     is_boolean(t) or is_integer(t) or is_float(t) or is_binary(t) or is_atom(t) or is_reference(t) or
       is_list(t) or is_map(t) or is_tuple(t)
@@ -479,14 +497,16 @@ defmodule StreamData.TypesTest do
 
   defp is_iolist([]), do: true
   defp is_iolist(x) when is_binary(x), do: true
-  defp is_iolist([x|xs]) when x in 0..255, do: is_iolist(xs)
-  defp is_iolist([x|xs]) when is_binary(x), do: is_iolist(xs)
-  defp is_iolist([x|xs]) do
+  defp is_iolist([x | xs]) when x in 0..255, do: is_iolist(xs)
+  defp is_iolist([x | xs]) when is_binary(x), do: is_iolist(xs)
+
+  defp is_iolist([x | xs]) do
     case is_iolist(x) do
       true -> is_iolist(xs)
       _ -> false
     end
   end
+
   defp is_iolist(_), do: false
 
   defp generate_data(name, args \\ []) do

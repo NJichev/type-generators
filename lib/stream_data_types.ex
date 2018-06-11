@@ -134,6 +134,7 @@ defmodule StreamDataTypes do
   defp generate({:type, _, :tuple, :any}) do
     term()
     |> list_of()
+    |> scale(fn size -> trunc(:math.pow(size, 0.5)) end)
     |> map(&List.to_tuple/1)
   end
 

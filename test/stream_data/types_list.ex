@@ -68,6 +68,8 @@ defmodule StreamDataTest.TypesList do
   @type builtin_nonempty_charlist() :: nonempty_charlist()
   @type builtin_iodata() :: iodata()
   @type builtin_iolist() :: iolist()
+  @type builtin_keyword() :: keyword()
+  @type builtin_keyword_value_type() :: keyword(integer())
   @type builtin_mfa() :: mfa()
   @type builtin_module() :: module()
   @type builtin_node() :: node()

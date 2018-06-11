@@ -267,6 +267,40 @@ defmodule StreamData.TypesTest do
       end
     end
 
+    test "keyword list fixed key" do
+      data = generate_data(:literal_keyword_list_fixed_key)
+
+      check all x <- data do
+        assert is_list(x)
+        Enum.each(x, fn {:key, int} ->
+          assert is_integer(int)
+        end)
+      end
+    end
+
+    test "keyword list fixed key variant 2" do
+      data = generate_data(:literal_keyword_list_fixed_key2)
+
+      check all x <- data do
+        assert is_list(x)
+        Enum.each(x, fn {:key, int} ->
+          assert is_integer(int)
+        end)
+      end
+    end
+
+    test "keyword list with type as a key" do
+      data = generate_data(:literal_keyword_list_type_key)
+
+      check all x <- data do
+        assert is_list(x)
+        Enum.each(x, fn {binary, int} ->
+          assert is_binary(binary)
+          assert is_integer(int)
+        end)
+      end
+    end
+
     test "empty map" do
       data = generate_data(:literal_empty_map)
 
@@ -499,6 +533,30 @@ defmodule StreamData.TypesTest do
 
       check all x <- data do
         assert is_iolist(x)
+      end
+    end
+
+    test "keyword" do
+      data = generate_data(:builtin_keyword)
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+        Enum.each(x, fn {k, v} ->
+          assert is_atom(k)
+          assert is_term(v)
+        end)
+      end
+    end
+
+    test "parameterized keyword" do
+      data = generate_data(:builtin_keyword_value_type)
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+        Enum.each(x, fn {k, v} ->
+          assert is_atom(k)
+          assert is_integer(v)
+        end)
       end
     end
 

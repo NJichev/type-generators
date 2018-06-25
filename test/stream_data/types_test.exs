@@ -566,6 +566,45 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "union types" do
+    test "with two types" do
+      data = generate_data(:union_with_two)
+
+      check all x <- data do
+        assert is_atom(x) or is_integer(x)
+      end
+    end
+
+    test "with three types" do
+      data = generate_data(:union_with_three)
+
+      check all x <- data do
+        assert is_atom(x) or is_integer(x) or x == true
+      end
+    end
+
+    test "all basic types union" do
+      data = generate_data(:union_basic_types)
+
+      check all x <- data do
+        assert is_atom(x) or is_reference(x) or is_integer(x) or is_float(x)
+      end
+    end
+  end
+
+  describe "recursive types" do
+    test "recursive list with tuples" do
+      data = generate_data(:recursive_tuple)
+
+      check all x <- data do
+        assert is_recursive_tuple(x)
+      end
+    end
+  end
+
+  defp is_recursive_tuple(nil), do: true
+  defp is_recursive_tuple({a, b}) when is_integer(a), do: is_recursive_tuple(b)
+
   defp each_improper_list([], _head_fun, _tail_fun), do: :ok
 
   defp each_improper_list([elem], _head_fun, tail_fun) do

@@ -91,9 +91,57 @@ defmodule StreamDataTypes do
 
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.
+  defp generate_from_type({_name, {:type, _, :union, _}} = type, _args) do
+    generate_union(type)
+  end
+
   defp generate_from_type({_name, type}, _args) do
     generate(type)
   end
+
+  defp generate_union({name, {:type, _, :union, args}}) do
+    {nodes, leaves} = nodes_and_leaves(name, args)
+
+    leaves =
+      leaves
+      |> Enum.map(&generate/1)
+      |> one_of()
+
+    case nodes do
+      [] ->
+        leaves
+
+      _ ->
+        StreamData.tree(leaves, fn leaf ->
+          nodes
+          |> Enum.map(&map_user_type_to_leaf(&1, leaf))
+          |> Enum.map(&generate/1)
+          |> one_of
+        end)
+    end
+  end
+
+  def nodes_and_leaves(name, args) do
+    args
+    |> Enum.split_with(&is_node(&1, name))
+  end
+
+  defp map_user_type_to_leaf({:user_type, _, _, _}, leaf), do: leaf
+
+  defp map_user_type_to_leaf({:type, line, type, args}, leaf) do
+    args = Enum.map(args, &map_user_type_to_leaf(&1, leaf))
+    {:type, line, type, args}
+  end
+
+  defp is_node({:type, _, _, args}, name), do: Enum.any?(args, &is_node(&1, name))
+
+  defp is_node({:user_type, _, name, _}, name) do
+    true
+  end
+
+  defp is_node(_, _), do: false
+
+  defp generate(%StreamData{} = generator), do: generator
 
   defp generate({:type, _, type, _}) when type in [:any, :term] do
     term()

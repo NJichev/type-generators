@@ -90,4 +90,12 @@ defmodule StreamDataTest.TypesList do
   ## Nested Lists
   @type nested_list_type :: list(list(integer()))
   @type nested_nonempty_list_type :: nonempty_list(list(integer()))
+
+  ## Union lists
+  @type union_with_two :: atom() | integer()
+  @type union_with_three :: true | integer() | atom()
+  @type union_basic_types :: atom() | reference() | integer() | float()
+
+  ## Recursive Types
+  @type recursive_tuple :: nil | {integer(), recursive_tuple()}
 end

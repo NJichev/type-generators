@@ -38,7 +38,7 @@ defmodule StreamDataTypes do
 
       types when is_list(types) ->
         pick_type(types, args)
-        |> generate_from_type(args)
+        |> generate_from_type(module, args)
     end
   end
 
@@ -91,15 +91,16 @@ defmodule StreamDataTypes do
 
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.
-  defp generate_from_type({_name, {:type, _, :union, _}} = type, _args) do
-    generate_union(type)
+  defp generate_from_type({_name, {:type, _, :union, _}} = type, module, _args) do
+    generate_union(module, type)
   end
 
-  defp generate_from_type({_name, type}, _args) do
+  defp generate_from_type({_name, type}, _module, _args) do
+    #TODO: Handle args
     generate(type)
   end
 
-  defp generate_union({name, {:type, _, :union, args}}) do
+  defp generate_union(module, {name, {:type, _, :union, args}}) do
     {nodes, leaves} = nodes_and_leaves(name, args)
 
     leaves =
@@ -114,7 +115,7 @@ defmodule StreamDataTypes do
       _ ->
         StreamData.tree(leaves, fn leaf ->
           nodes
-          |> Enum.map(&map_user_type_to_leaf(&1, leaf))
+          |> Enum.map(&map_user_type_to_leaf(&1, module, name, leaf))
           |> Enum.map(&generate/1)
           |> one_of
         end)
@@ -126,10 +127,13 @@ defmodule StreamDataTypes do
     |> Enum.split_with(&is_node(&1, name))
   end
 
-  defp map_user_type_to_leaf({:user_type, _, _, _}, leaf), do: leaf
+  defp map_user_type_to_leaf({:user_type, _, name, _}, _module, name, leaf), do: leaf
+  defp map_user_type_to_leaf({:user_type, _, name, _}, module, _, _leaf) do
+    from_type(module, name)
+  end
 
-  defp map_user_type_to_leaf({:type, line, type, args}, leaf) do
-    args = Enum.map(args, &map_user_type_to_leaf(&1, leaf))
+  defp map_user_type_to_leaf({:type, line, type, args}, module, name, leaf) do
+    args = Enum.map(args, &map_user_type_to_leaf(&1, module, name, leaf))
     {:type, line, type, args}
   end
 

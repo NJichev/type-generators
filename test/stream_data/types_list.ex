@@ -98,4 +98,7 @@ defmodule StreamDataTest.TypesList do
 
   ## Recursive Types
   @type recursive_tuple :: nil | {integer(), recursive_tuple()}
+
+  @typep operator :: :+ | :- | :* | :/
+  @type recursive_expression :: integer() | {recursive_expression(), operator(), recursive_expression()}
 end

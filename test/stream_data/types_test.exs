@@ -600,7 +600,21 @@ defmodule StreamData.TypesTest do
         assert is_recursive_tuple(x)
       end
     end
+
+    test "expressions are recursive" do
+      data = generate_data(:recursive_expression)
+
+      check all x <- data do
+        assert is_expression(x)
+      end
+    end
   end
+
+  defp is_expression(x) when is_integer(x), do: true
+  defp is_expression({exp1, operator, exp2}) when operator in [:*, :/, :+, :-] do
+    is_expression(exp1) && is_expression(exp2)
+  end
+  defp is_expression(_), do: false
 
   defp is_recursive_tuple(nil), do: true
   defp is_recursive_tuple({a, b}) when is_integer(a), do: is_recursive_tuple(b)

@@ -7,7 +7,7 @@ defmodule StreamData.TypesTest do
   test "raises when missing a type" do
     assert_raise(
       ArgumentError,
-      "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
+      "Module StreamDataTest.TypesList does not define type does_not_exist/0.",
       fn -> generate_data(:does_not_exist) end
     )
   end
@@ -566,6 +566,30 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "protocols" do
+    test "protocols are not to be generated" do
+      assert_raise(
+        ArgumentError,
+        """
+        You have specified a type which relies or is the protocol #{Enumerable}.
+        Protocols are currently unsupported, instead try generating for the type which implements the protocol.
+        """,
+        fn -> generate_data(:protocol_enumerable) end
+      )
+    end
+
+    test "types that expand to protocols are not to be generated" do
+      assert_raise(
+        ArgumentError,
+        """
+        You have specified a type which relies or is the protocol #{Enumerable}.
+        Protocols are currently unsupported, instead try generating for the type which implements the protocol.
+        """,
+        fn -> generate_data(:protocol_enum) end
+      )
+    end
+  end
+
   defp each_improper_list([], _head_fun, _tail_fun), do: :ok
 
   defp each_improper_list([elem], _head_fun, tail_fun) do
@@ -593,10 +617,7 @@ defmodule StreamData.TypesTest do
   defp is_iolist([x | xs]) when is_binary(x), do: is_iolist(xs)
 
   defp is_iolist([x | xs]) do
-    case is_iolist(x) do
-      true -> is_iolist(xs)
-      _ -> false
-    end
+    is_iolist(x) && is_iolist(xs)
   end
 
   defp is_iolist(_), do: false

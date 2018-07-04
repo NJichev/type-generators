@@ -30,11 +30,8 @@ defmodule StreamDataTypes do
     # put args in type tuple
     case type do
       [] ->
-        msg = """
-        Module #{inspect(module)} does not define type #{name}/#{length(args)}.
-        """
-
-        raise ArgumentError, msg
+        raise ArgumentError,
+              "Module #{inspect(module)} does not define type #{name}/#{length(args)}."
 
       types when is_list(types) ->
         pick_type(types, args)
@@ -50,12 +47,10 @@ defmodule StreamDataTypes do
       for {:attribute, _line, :type, {name, type, _other}} <- abstract_code, do: {name, type}
     else
       _ ->
-        msg = """
+        raise ArgumentError, """
         Could not find .beam file for Module #{inspect(module)}.
         Are you sure you have passed in the correct module name?
         """
-
-        raise ArgumentError, msg
     end
   end
 
@@ -280,7 +275,14 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:remote_type, _, [{:atom, _, module}, {:atom, _, type}, []]}) do
-    from_type(module, type)
+    if protocol?(module) do
+      raise ArgumentError, """
+            You have specified a type which relies or is the protocol #{module}.
+            Protocols are currently unsupported, instead try generating for the type which implements the protocol.
+            """
+    else
+      from_type(module, type)
+    end
   end
 
   defp generate({:type, _, :iolist, []}) do
@@ -344,5 +346,10 @@ defmodule StreamDataTypes do
       generate(key),
       generate(value)
     )
+  end
+
+  defp protocol?(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :__protocol__, 1) and
+      module.__protocol__(:module) == module
   end
 end

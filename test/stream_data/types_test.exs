@@ -590,10 +590,62 @@ defmodule StreamData.TypesTest do
         assert is_atom(x) or is_reference(x) or is_integer(x) or is_float(x)
       end
     end
+
+    test "with user defined type" do
+      data = generate_data(:union_with_user_defined_atom)
+
+      check all x <- data do
+        assert is_atom(x) or is_integer(x)
+      end
+    end
+
+    test "with remote types" do
+      data = generate_data(:union_with_remote_types)
+
+      check all x <- data do
+        assert is_integer(x) or is_bitstring(x)
+      end
+    end
   end
 
-  describe "recursive types" do
-    test "recursive list with tuples" do
+  # Test that user defined types are inlined correctly
+  describe "user defined types" do
+    test "lists" do
+      data = generate_data(:user_defined_list)
+
+      check all list <- data do
+        assert is_list(list)
+        assert Enum.all?(list, &is_atom(&1))
+      end
+    end
+
+    test "map" do
+      data = generate_data(:user_defined_map)
+
+      check all map <- data do
+        assert %{atom: atom} = map
+        assert is_atom(atom)
+      end
+
+      # Take 100 maps and check at least one has gotten a string: string key
+      assert data
+             |> Enum.take(100)
+             |> Enum.any?(fn %{string: string} ->
+               is_bitstring(string)
+             end)
+    end
+
+    test "tuples" do
+      data = generate_data(:user_defined_tuple)
+
+      check all {:atom, atom} <- data do
+        assert is_atom(atom)
+      end
+    end
+  end
+
+  describe "recursive type" do
+    test "list with tuples" do
       data = generate_data(:recursive_tuple)
 
       check all x <- data do
@@ -601,19 +653,44 @@ defmodule StreamData.TypesTest do
       end
     end
 
-    test "expressions are recursive" do
+    test "expressions" do
       data = generate_data(:recursive_expression)
 
       check all x <- data do
         assert is_expression(x)
       end
     end
+
+    test "integers with map container" do
+      data = generate_data(:recursive_integers)
+
+      check all x <- data do
+        assert is_recursive_integer(x)
+      end
+    end
+
+    test "forests" do
+      data = generate_data(:recursive_forest)
+
+      check all x <- data do
+        assert is_forest(x)
+      end
+    end
   end
 
+  defp is_forest({x, forests}) when is_integer(x) and is_list(forests) do
+    Enum.all?(forests, &is_forest/1)
+  end
+
+  defp is_recursive_integer(:zero), do: true
+  defp is_recursive_integer(%{succ: x}), do: is_recursive_integer(x)
+
   defp is_expression(x) when is_integer(x), do: true
+
   defp is_expression({exp1, operator, exp2}) when operator in [:*, :/, :+, :-] do
     is_expression(exp1) && is_expression(exp2)
   end
+
   defp is_expression(_), do: false
 
   defp is_recursive_tuple(nil), do: true

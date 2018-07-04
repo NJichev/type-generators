@@ -107,6 +107,20 @@ defmodule StreamDataTypes do
     raise ArgumentError, "Cannot generate types of the none type."
   end
 
+  defp generate({:type, _, type, _}) when type in [:pid, :port] do
+    raise ArgumentError, """
+    Pid/Port types are not supported.
+    To create a StreamData generator for pids/ports use the following hack:
+        pids = StreamData.map(
+          StreamData.constant(:unused),
+          fn _ -> spawn_pid/port() end
+        )
+
+    You can specify any zero arity function for spawning pids/ports.
+    To have multiple types of pids, chain them together with `StreamData.one_of/1`
+    """
+  end
+
   defp generate({:type, _, :integer, _}) do
     integer()
   end

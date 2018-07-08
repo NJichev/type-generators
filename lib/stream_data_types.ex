@@ -158,18 +158,17 @@ defmodule StreamDataTypes do
   end
 
   defp generate_from_type({name, type}, module, _args) do
-    case recursive_without_union?(type, name, :none) do
-      false ->
-        generate(type)
+    if recursive_without_union?(type, name) do
+      leaves = rewrite_recursive_type(type, name)
+               |> generate
 
-      parent ->
-        leaves = empty_container(parent)
-
-        StreamData.tree(leaves, fn leaf ->
-          type
-          |> map_user_type_to_leaf(module, name, leaf)
-          |> generate()
-        end)
+      StreamData.tree(leaves, fn leaf ->
+        type
+        |> map_user_type_to_leaf(module, name, leaf)
+        |> generate()
+      end)
+    else
+      generate(type)
     end
   end
 
@@ -206,17 +205,17 @@ defmodule StreamDataTypes do
 
   defp map_user_type_to_leaf({_, _, _l} = type, _module, _name, _leaf), do: type
 
-  defp recursive_without_union?({:type, _, _, :any}, _name, _), do: false
+  defp recursive_without_union?({:type, _, _, :any}, _name), do: false
 
-  defp recursive_without_union?({:type, _, wrapper, args}, name, _old) do
+  defp recursive_without_union?({:type, _, _, args}, name) do
     List.foldr(args, false, fn elem, acc ->
-      acc || recursive_without_union?(elem, name, wrapper)
+      acc || recursive_without_union?(elem, name)
     end)
   end
 
-  defp recursive_without_union?({:user_type, _, name, _}, name, parent), do: parent
+  defp recursive_without_union?({:user_type, _, name, _}, name), do: true
 
-  defp recursive_without_union?(_type, _name, _parent), do: false
+  defp recursive_without_union?(_type, _name), do: false
 
   defp node?({:type, _, _, args}, name), do: Enum.any?(args, &node?(&1, name))
 
@@ -483,6 +482,19 @@ defmodule StreamDataTypes do
     )
   end
 
-  defp empty_container(:list), do: constant([])
-  defp empty_container(:map), do: constant(%{})
+  # defp empty_container(:list), do: constant([])
+  # defp empty_container(:map), do: constant(%{})
+  #
+  defp rewrite_recursive_type({:type, line, :list, [{:user_type, _, name, _}]}, name) do
+    {:type, line, nil, []}
+  end
+  defp rewrite_recursive_type({:type, line, wrapper, args}, name) do
+    {
+      :type,
+      line,
+      wrapper,
+      Enum.map(args, &rewrite_recursive_type(&1, name))
+    }
+  end
+  defp rewrite_recursive_type(type, _name), do: type
 end

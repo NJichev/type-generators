@@ -676,11 +676,25 @@ defmodule StreamData.TypesTest do
         assert is_forest(x)
       end
     end
+
+    test "forest with maps" do
+      data = generate_data(:recursive_map_forest)
+
+      #TODO: Figure out why maps generate so much duplicates
+      check all x <- data, max_runs: 1 do
+        assert is_map_forest(x)
+      end
+    end
   end
 
   defp is_forest({x, forests}) when is_integer(x) and is_list(forests) do
     Enum.all?(forests, &is_forest/1)
   end
+
+  defp is_map_forest(%{int: x, forests: forests}) when is_integer(x) and is_list(forests) do
+    Enum.all?(forests, &is_map_forest/1)
+  end
+  defp is_map_forest(%{int: x}) when is_integer(x), do: true
 
   defp is_recursive_integer(:zero), do: true
   defp is_recursive_integer(%{succ: x}), do: is_recursive_integer(x)

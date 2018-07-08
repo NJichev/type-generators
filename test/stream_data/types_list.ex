@@ -118,4 +118,8 @@ defmodule StreamDataTest.TypesList do
 
   ## Recursive types without unions
   @type recursive_forest :: {integer(), [recursive_forest]}
+  @type recursive_map_forest() :: %{
+          :int => integer(),
+          optional(:forests) => recursive_map_forest()
+        }
 end

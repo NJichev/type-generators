@@ -24,7 +24,7 @@ defmodule StreamDataTypes do
       when is_atom(module) and is_atom(name) and is_list(args) do
     pick_type_from_beam(module, name, args)
     |> inline_user_type(module)
-    |> generate_from_type(module, args)
+    |> generate_from_type(args)
   end
 
   defp pick_type_from_beam(module, name, args) do
@@ -120,14 +120,13 @@ defmodule StreamDataTypes do
 
   defp inline_user_type({:type, line, :map, fields}, module, name) do
     inlined_fields =
-      Enum.map(fields, fn
-        {:type, l, field_type, field_args}
-        when field_type in [:map_field_exact, :map_field_assoc] ->
-          inlined_field_args =
-            field_args
-            |> Enum.map(&inline_user_type(&1, module, name))
+      Enum.map(fields, fn {:type, l, field_type, field_args}
+                          when field_type in [:map_field_exact, :map_field_assoc] ->
+        inlined_field_args =
+          field_args
+          |> Enum.map(&inline_user_type(&1, module, name))
 
-          {:type, l, field_type, inlined_field_args}
+        {:type, l, field_type, inlined_field_args}
       end)
 
     {:type, line, :map, inlined_fields}
@@ -144,7 +143,7 @@ defmodule StreamDataTypes do
 
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.
-  defp generate_from_type({name, {:type, _, :union, args}} = type, module, _args) do
+  defp generate_from_type({name, {:type, _, :union, args}}, _args) do
     {nodes, leaves} = nodes_and_leaves(name, args)
     leaves = generate_union(leaves)
 
@@ -153,20 +152,17 @@ defmodule StreamDataTypes do
         leaves
 
       nodes ->
-        generate_recursive(module, type, nodes, leaves)
+        generate_recursive(nodes, leaves)
     end
   end
 
-  defp generate_from_type({name, type}, module, _args) do
+  defp generate_from_type({name, type}, _args) do
     if recursive_without_union?(type, name) do
-      leaves = rewrite_recursive_type(type, name)
-               |> generate
-
-      StreamData.tree(leaves, fn leaf ->
-        type
-        |> map_user_type_to_leaf(module, name, leaf)
+      leaves =
+        rewrite_recursive_type(type, name)
         |> generate()
-      end)
+
+        generate_recursive([type], leaves)
     else
       generate(type)
     end
@@ -178,11 +174,11 @@ defmodule StreamDataTypes do
     |> one_of
   end
 
-  defp generate_recursive(module, {name, {:type, _, :union, _}}, nodes, leaves) do
+  defp generate_recursive(nodes, leaves) do
     StreamData.tree(leaves, fn leaf ->
       nodes
-      |> Enum.map(&map_user_type_to_leaf(&1, module, name, leaf))
-      |> Enum.map(&generate_from_type({:anonymous, &1}, module, []))
+      |> Enum.map(&map_user_type_to_leaf(&1, leaf))
+      |> Enum.map(&generate_from_type({:anonymous, &1}, []))
       |> one_of
     end)
   end
@@ -192,20 +188,22 @@ defmodule StreamDataTypes do
     |> Enum.split_with(&node?(&1, name))
   end
 
-  defp map_user_type_to_leaf({:user_type, _, name, _}, _module, name, leaf), do: leaf
+  defp map_user_type_to_leaf({:user_type, _line, _name, _args}, leaf), do: leaf
 
-  defp map_user_type_to_leaf({:user_type, _, name, _}, module, _, _leaf) do
-    from_type(module, name)
-  end
-
-  defp map_user_type_to_leaf({:type, line, type, args}, module, name, leaf) do
-    args = Enum.map(args, &map_user_type_to_leaf(&1, module, name, leaf))
+  defp map_user_type_to_leaf({:type, line, type, args}, leaf) do
+    args = Enum.map(args, &map_user_type_to_leaf(&1, leaf))
     {:type, line, type, args}
   end
 
-  defp map_user_type_to_leaf({_, _, _l} = type, _module, _name, _leaf), do: type
+  defp map_user_type_to_leaf({_, _, _l} = type, _leaf), do: type
 
   defp recursive_without_union?({:type, _, _, :any}, _name), do: false
+
+  defp recursive_without_union?({:type, _, :map, fields}, name) do
+    Enum.any?(fields, fn {:type, _, _, key_value_pair} ->
+      Enum.any?(key_value_pair, fn type -> recursive_without_union?(type, name) end)
+    end)
+  end
 
   defp recursive_without_union?({:type, _, _, args}, name) do
     List.foldr(args, false, fn elem, acc ->
@@ -482,12 +480,26 @@ defmodule StreamDataTypes do
     )
   end
 
-  # defp empty_container(:list), do: constant([])
-  # defp empty_container(:map), do: constant(%{})
-  #
+  defp rewrite_recursive_type({:type, _, _, :any} = t, _name), do: t
+
   defp rewrite_recursive_type({:type, line, :list, [{:user_type, _, name, _}]}, name) do
     {:type, line, nil, []}
   end
+
+  defp rewrite_recursive_type({:type, line, :map, fields}, name) do
+    rewritten_fields =
+      Enum.reject(fields, fn
+        {:type, _, :map_field_assoc, key_value_pair} ->
+          Enum.any?(key_value_pair, fn
+            {:user_type, _, ^name, _} -> true
+            _ -> false
+          end)
+        _ -> false
+      end)
+
+    {:type, line, :map, rewritten_fields}
+  end
+
   defp rewrite_recursive_type({:type, line, wrapper, args}, name) do
     {
       :type,
@@ -496,5 +508,6 @@ defmodule StreamDataTypes do
       Enum.map(args, &rewrite_recursive_type(&1, name))
     }
   end
+
   defp rewrite_recursive_type(type, _name), do: type
 end

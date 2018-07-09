@@ -87,6 +87,22 @@ defmodule StreamData.TypesTest do
       end
     end
 
+    test "pid" do
+      assert_raise(
+        ArgumentError,
+        ~r/Pid\/Port types are not supported./,
+        fn -> generate_data(:basic_pid) end
+      )
+    end
+
+    test "port" do
+      assert_raise(
+        ArgumentError,
+        ~r/Pid\/Port types are not supported./,
+        fn -> generate_data(:basic_port) end
+      )
+    end
+
     # Numbers
     test "float" do
       data = generate_data(:basic_float)

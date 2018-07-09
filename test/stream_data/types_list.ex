@@ -11,6 +11,8 @@ defmodule StreamDataTest.TypesList do
   @type basic_tuple() :: tuple()
   @type basic_map :: map()
   @type basic_struct :: struct()
+  @type basic_pid :: pid()
+  @type basic_port :: port()
 
   # Numbers
   @type basic_float() :: float()

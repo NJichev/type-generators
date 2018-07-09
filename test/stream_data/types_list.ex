@@ -92,4 +92,8 @@ defmodule StreamDataTest.TypesList do
   ## Nested Lists
   @type nested_list_type :: list(list(integer()))
   @type nested_nonempty_list_type :: nonempty_list(list(integer()))
+
+  ## Protocol Types
+  @type protocol_enumerable :: Enumerable.t()
+  @type protocol_enum :: Enumerable.t()
 end

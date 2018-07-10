@@ -11,6 +11,8 @@ defmodule StreamDataTest.TypesList do
   @type basic_tuple() :: tuple()
   @type basic_map :: map()
   @type basic_struct :: struct()
+  @type basic_pid :: pid()
+  @type basic_port :: port()
 
   # Numbers
   @type basic_float() :: float()
@@ -122,4 +124,8 @@ defmodule StreamDataTest.TypesList do
           :int => integer(),
           optional(:forests) => recursive_map_forest()
         }
+
+  ## Protocol Types
+  @type protocol_enumerable :: Enumerable.t()
+  @type protocol_enum :: Enumerable.t()
 end

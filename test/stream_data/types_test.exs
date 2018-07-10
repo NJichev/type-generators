@@ -7,7 +7,7 @@ defmodule StreamData.TypesTest do
   test "raises when missing a type" do
     assert_raise(
       ArgumentError,
-      "Module StreamDataTest.TypesList does not define type does_not_exist/0.\n",
+      "Module StreamDataTest.TypesList does not define type does_not_exist/0.",
       fn -> generate_data(:does_not_exist) end
     )
   end
@@ -85,6 +85,22 @@ defmodule StreamData.TypesTest do
       check all x <- data, max_runs: 25 do
         assert is_tuple(x)
       end
+    end
+
+    test "pid" do
+      assert_raise(
+        ArgumentError,
+        ~r/Pid\/Port types are not supported./,
+        fn -> generate_data(:basic_pid) end
+      )
+    end
+
+    test "port" do
+      assert_raise(
+        ArgumentError,
+        ~r/Pid\/Port types are not supported./,
+        fn -> generate_data(:basic_port) end
+      )
     end
 
     # Numbers
@@ -687,6 +703,30 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "protocols" do
+    test "protocols are not to be generated" do
+      assert_raise(
+        ArgumentError,
+        """
+        You have specified a type which relies or is the protocol #{Enumerable}.
+        Protocols are currently unsupported, instead try generating for the type which implements the protocol.
+        """,
+        fn -> generate_data(:protocol_enumerable) end
+      )
+    end
+
+    test "types that expand to protocols are not to be generated" do
+      assert_raise(
+        ArgumentError,
+        """
+        You have specified a type which relies or is the protocol #{Enumerable}.
+        Protocols are currently unsupported, instead try generating for the type which implements the protocol.
+        """,
+        fn -> generate_data(:protocol_enum) end
+      )
+    end
+  end
+
   defp is_forest({x, forests}) when is_integer(x) and is_list(forests) do
     Enum.all?(forests, &is_forest/1)
   end
@@ -737,10 +777,7 @@ defmodule StreamData.TypesTest do
   defp is_iolist([x | xs]) when is_binary(x), do: is_iolist(xs)
 
   defp is_iolist([x | xs]) do
-    case is_iolist(x) do
-      true -> is_iolist(xs)
-      _ -> false
-    end
+    is_iolist(x) && is_iolist(xs)
   end
 
   defp is_iolist(_), do: false

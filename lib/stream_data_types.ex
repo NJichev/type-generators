@@ -36,11 +36,8 @@ defmodule StreamDataTypes do
     # put args in type tuple
     case type do
       [] ->
-        msg = """
-        Module #{inspect(module)} does not define type #{name}/#{length(args)}.
-        """
-
-        raise ArgumentError, msg
+        raise ArgumentError,
+              "Module #{inspect(module)} does not define type #{name}/#{length(args)}."
 
       types when is_list(types) ->
         types
@@ -56,12 +53,10 @@ defmodule StreamDataTypes do
       for {:attribute, _line, :type, {name, type, _other}} <- abstract_code, do: {name, type}
     else
       _ ->
-        msg = """
+        raise ArgumentError, """
         Could not find .beam file for Module #{inspect(module)}.
         Are you sure you have passed in the correct module name?
         """
-
-        raise ArgumentError, msg
     end
   end
 
@@ -237,6 +232,20 @@ defmodule StreamDataTypes do
     raise ArgumentError, "Cannot generate types of the none type."
   end
 
+  defp generate({:type, _, type, _}) when type in [:pid, :port] do
+    raise ArgumentError, """
+    Pid/Port types are not supported.
+    To create a StreamData generator for pids/ports use the following hack:
+        pids = StreamData.map(
+          StreamData.constant(:unused),
+          fn _ -> spawn_pid/port() end
+        )
+
+    You can specify any zero arity function for spawning pids/ports.
+    To have multiple types of pids, chain them together with `StreamData.one_of/1`
+    """
+  end
+
   defp generate({:type, _, :integer, _}) do
     integer()
   end
@@ -410,7 +419,14 @@ defmodule StreamDataTypes do
   end
 
   defp generate({:remote_type, _, [{:atom, _, module}, {:atom, _, type}, []]}) do
-    from_type(module, type)
+    if protocol?(module) do
+      raise ArgumentError, """
+            You have specified a type which relies or is the protocol #{module}.
+            Protocols are currently unsupported, instead try generating for the type which implements the protocol.
+            """
+    else
+      from_type(module, type)
+    end
   end
 
   defp generate({:type, _, :iolist, []}) do
@@ -510,4 +526,9 @@ defmodule StreamDataTypes do
   end
 
   defp rewrite_recursive_type(type, _name), do: type
+
+  defp protocol?(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :__protocol__, 1) and
+      module.__protocol__(:module) == module
+  end
 end

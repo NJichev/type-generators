@@ -22,6 +22,12 @@ defmodule StreamDataTypes do
   """
   def from_type(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
+    pick_type_from_beam(module, name, args)
+    |> inline_user_type(module)
+    |> generate_from_type(args)
+  end
+
+  defp pick_type_from_beam(module, name, args) do
     type = for pair = {^name, _type} <- beam_types(module), do: pair
 
     # pick correct type, when multiple
@@ -34,8 +40,8 @@ defmodule StreamDataTypes do
               "Module #{inspect(module)} does not define type #{name}/#{length(args)}."
 
       types when is_list(types) ->
-        pick_type(types, args)
-        |> generate_from_type(args)
+        types
+        |> pick_type(args)
     end
   end
 
@@ -84,11 +90,135 @@ defmodule StreamDataTypes do
 
   defp vars(_), do: 0
 
+  defp inline_user_type({name, type}, module) do
+    {name, inline_user_type(type, module, name)}
+  end
+
+  defp inline_user_type({:type, line, :union, types}, module, name) do
+    inlined =
+      types
+      |> Enum.map(fn type -> inline_user_type(type, module, name) end)
+
+    {:type, line, :union, inlined}
+  end
+
+  defp inline_user_type({:user_type, _line, name, _} = type, _module, name) do
+    type
+  end
+
+  defp inline_user_type({:user_type, _line, name, args}, module, _original_name) do
+    {^name, type} = pick_type_from_beam(module, name, args)
+    type
+  end
+
+  defp inline_user_type({:type, _line, :map, :any} = type, _module, _name), do: type
+
+  defp inline_user_type({:type, line, :map, fields}, module, name) do
+    inlined_fields =
+      Enum.map(fields, fn {:type, l, field_type, field_args}
+                          when field_type in [:map_field_exact, :map_field_assoc] ->
+        inlined_field_args =
+          field_args
+          |> Enum.map(&inline_user_type(&1, module, name))
+
+        {:type, l, field_type, inlined_field_args}
+      end)
+
+    {:type, line, :map, inlined_fields}
+  end
+
+  defp inline_user_type({:type, _, :tuple, :any} = t, _module, _name), do: t
+
+  defp inline_user_type({:type, line, type, args}, module, name) when type in [:list, :tuple] do
+    inlined_list_args = Enum.map(args, &inline_user_type(&1, module, name))
+    {:type, line, type, inlined_list_args}
+  end
+
+  defp inline_user_type(type, _module, _name), do: type
+
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.
-  defp generate_from_type({_name, type}, _args) do
-    generate(type)
+  defp generate_from_type({name, {:type, _, :union, args}}, _args) do
+    {nodes, leaves} = nodes_and_leaves(name, args)
+    leaves = generate_union(leaves)
+
+    case nodes do
+      [] ->
+        leaves
+
+      nodes ->
+        generate_recursive(nodes, leaves)
+    end
   end
+
+  defp generate_from_type({name, type}, _args) do
+    if recursive_without_union?(type, name) do
+      leaves =
+        rewrite_recursive_type(type, name)
+        |> generate()
+
+        generate_recursive([type], leaves)
+    else
+      generate(type)
+    end
+  end
+
+  defp generate_union(leaves) do
+    leaves
+    |> Enum.map(&generate/1)
+    |> one_of
+  end
+
+  defp generate_recursive(nodes, leaves) do
+    StreamData.tree(leaves, fn leaf ->
+      nodes
+      |> Enum.map(&map_user_type_to_leaf(&1, leaf))
+      |> Enum.map(&generate_from_type({:anonymous, &1}, []))
+      |> one_of
+    end)
+  end
+
+  def nodes_and_leaves(name, args) do
+    args
+    |> Enum.split_with(&node?(&1, name))
+  end
+
+  defp map_user_type_to_leaf({:user_type, _line, _name, _args}, leaf), do: leaf
+
+  defp map_user_type_to_leaf({:type, line, type, args}, leaf) do
+    args = Enum.map(args, &map_user_type_to_leaf(&1, leaf))
+    {:type, line, type, args}
+  end
+
+  defp map_user_type_to_leaf({_, _, _l} = type, _leaf), do: type
+
+  defp recursive_without_union?({:type, _, _, :any}, _name), do: false
+
+  defp recursive_without_union?({:type, _, :map, fields}, name) do
+    Enum.any?(fields, fn {:type, _, _, key_value_pair} ->
+      Enum.any?(key_value_pair, fn type -> recursive_without_union?(type, name) end)
+    end)
+  end
+
+  defp recursive_without_union?({:type, _, _, args}, name) do
+    List.foldr(args, false, fn elem, acc ->
+      acc || recursive_without_union?(elem, name)
+    end)
+  end
+
+  defp recursive_without_union?({:user_type, _, name, _}, name), do: true
+
+  defp recursive_without_union?(_type, _name), do: false
+
+  defp node?({:type, _, _, args}, name), do: Enum.any?(args, &node?(&1, name))
+
+  defp node?({:user_type, _, name, _}, name) do
+    true
+  end
+
+  defp node?(_, _), do: false
+
+  defp generate(%StreamData{} = generator), do: generator
 
   defp generate({:type, _, type, _}) when type in [:any, :term] do
     term()
@@ -333,6 +463,10 @@ defmodule StreamDataTypes do
     ])
   end
 
+  defp generate({:type, _, :union, args}) do
+    generate_union(args)
+  end
+
   defp char() do
     integer(0..0x10FFFF)
   end
@@ -361,6 +495,37 @@ defmodule StreamDataTypes do
       generate(value)
     )
   end
+
+  defp rewrite_recursive_type({:type, _, _, :any} = t, _name), do: t
+
+  defp rewrite_recursive_type({:type, line, :list, [{:user_type, _, name, _}]}, name) do
+    {:type, line, nil, []}
+  end
+
+  defp rewrite_recursive_type({:type, line, :map, fields}, name) do
+    rewritten_fields =
+      Enum.reject(fields, fn
+        {:type, _, :map_field_assoc, key_value_pair} ->
+          Enum.any?(key_value_pair, fn
+            {:user_type, _, ^name, _} -> true
+            _ -> false
+          end)
+        _ -> false
+      end)
+
+    {:type, line, :map, rewritten_fields}
+  end
+
+  defp rewrite_recursive_type({:type, line, wrapper, args}, name) do
+    {
+      :type,
+      line,
+      wrapper,
+      Enum.map(args, &rewrite_recursive_type(&1, name))
+    }
+  end
+
+  defp rewrite_recursive_type(type, _name), do: type
 
   defp protocol?(module) do
     Code.ensure_loaded?(module) and function_exported?(module, :__protocol__, 1) and

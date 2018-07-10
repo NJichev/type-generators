@@ -93,6 +93,38 @@ defmodule StreamDataTest.TypesList do
   @type nested_list_type :: list(list(integer()))
   @type nested_nonempty_list_type :: nonempty_list(list(integer()))
 
+  ## Union Types
+  @type union_with_two :: atom() | integer()
+  @type union_with_three :: true | integer() | atom()
+  @type union_basic_types :: atom() | reference() | integer() | float()
+
+  # Unions with user and remote defined types.
+  @typep user_defined_atom :: atom()
+  @type union_with_user_defined_atom :: integer() | user_defined_atom()
+  @type union_with_remote_types :: integer() | String.t()
+
+  ## Test user defined types are inlined correctly
+  # Needed only for container types and unions
+  @type user_defined_list :: [user_defined_atom()]
+  @type user_defined_map :: %{atom: user_defined_atom(), string: String.t()}
+  @type user_defined_tuple :: {:atom, user_defined_atom()}
+
+  ## Recursive Types
+  @type recursive_tuple :: nil | {integer(), recursive_tuple()}
+
+  @typep operator :: :+ | :- | :* | :/
+  @type recursive_expression :: integer() | {recursive_expression(), operator(), recursive_expression()}
+
+  @typep zero :: :zero
+  @type recursive_integers :: zero | %{succ: recursive_integers}
+
+  ## Recursive types without unions
+  @type recursive_forest :: {integer(), [recursive_forest]}
+  @type recursive_map_forest() :: %{
+          :int => integer(),
+          optional(:forests) => recursive_map_forest()
+        }
+
   ## Protocol Types
   @type protocol_enumerable :: Enumerable.t()
   @type protocol_enum :: Enumerable.t()

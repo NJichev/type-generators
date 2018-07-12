@@ -26,8 +26,8 @@ defmodule StreamData.TypesTest do
   end
 
   test "raises when wrong number of arguments given" do
-    assert_raise(ArgumentError, "Wrong amount of arguments passed.", fn ->
-      generate_data(:basic_atom, v: :integer)
+    assert_raise(ArgumentError, ~r/Could not find type with/, fn ->
+      generate_data(:basic_atom, [:integer])
     end)
   end
 
@@ -88,19 +88,15 @@ defmodule StreamData.TypesTest do
     end
 
     test "pid" do
-      assert_raise(
-        ArgumentError,
-        ~r/Pid\/Port types are not supported./,
-        fn -> generate_data(:basic_pid) end
-      )
+      assert_raise(ArgumentError, ~r/Pid\/Port types are not supported./, fn ->
+        generate_data(:basic_pid)
+      end)
     end
 
     test "port" do
-      assert_raise(
-        ArgumentError,
-        ~r/Pid\/Port types are not supported./,
-        fn -> generate_data(:basic_port) end
-      )
+      assert_raise(ArgumentError, ~r/Pid\/Port types are not supported./, fn ->
+        generate_data(:basic_port)
+      end)
     end
 
     # Numbers
@@ -696,7 +692,7 @@ defmodule StreamData.TypesTest do
     test "forest with maps" do
       data = generate_data(:recursive_map_forest)
 
-      #TODO: Figure out why maps generate so much duplicates
+      # TODO: Figure out why maps generate so much duplicates
       check all x <- data, max_runs: 1 do
         assert is_map_forest(x)
       end
@@ -727,6 +723,173 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "parameterized types" do
+    test "basic types are inlined" do
+      basic = [
+        :atom,
+        :reference,
+        :tuple,
+        :map,
+        :float,
+        :integer
+      ]
+
+      Enum.each(basic, fn type ->
+        data = generate_data(:parameterized_simple, [type])
+
+        check all x <- data, max_runs: 10 do
+          apply(Kernel, :"is_#{type}", [x])
+        end
+      end)
+    end
+
+    test "literals are inlined" do
+      literals = [1, :atom, false, [], %{}, {}]
+
+      Enum.each(literals, fn literal ->
+        data = generate_data(:parameterized_simple, literal: literal)
+
+        check all x <- data, max_runs: 25 do
+          assert x === literal
+        end
+      end)
+    end
+
+    test "lists are inlined" do
+      data = generate_data(:parameterized_simple, list: [:integer])
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+        assert Enum.all?(x, &is_integer/1)
+      end
+    end
+
+    test "tuples are inlined" do
+      data = generate_data(:parameterized_simple, tuple: [:integer])
+
+      check all {x} <- data, max_runs: 25 do
+        assert is_integer(x)
+      end
+    end
+
+    test "map with required keys are inlined" do
+      data =
+        generate_data(
+          :parameterized_simple,
+          map: [
+            {:atom, :integer}
+          ]
+        )
+
+      check all x <- data do
+        assert is_map(x)
+        assert Enum.all?(x, fn {key, value} -> is_atom(key) && is_integer(value) end)
+      end
+    end
+
+    test "map with required key literal and value" do
+      data =
+        generate_data(
+          :parameterized_simple,
+          map: [
+            {{:literal, :key}, :integer}
+          ]
+        )
+
+      check all %{key: x} <- data do
+        assert is_integer(x)
+      end
+    end
+
+    test "maps with optional keys are inlined" do
+      data =
+        generate_data(
+          :parameterized_simple,
+          map: [
+            optional: {:atom, :integer}
+          ]
+        )
+
+      check all x <- data do
+        assert is_map(x)
+
+        assert x == %{} or
+                 Enum.all?(x, fn {key, value} ->
+                   is_atom(key) && is_integer(value)
+                 end)
+      end
+    end
+
+    test "nested type arguments are expanded" do
+      data = generate_data(:parameterized_simple, list: [list: [:integer]])
+
+      check all list <- data do
+        assert is_list(list)
+
+        Enum.each(list, fn inner ->
+          assert is_list(inner)
+          assert Enum.all?(inner, &is_integer/1)
+        end)
+      end
+    end
+
+    test "list container is inlined" do
+      data = generate_data(:parameterized_list, [:integer])
+
+      check all x <- data do
+        assert is_list(x)
+        assert Enum.all?(x, &is_integer/1)
+      end
+    end
+
+    test "tuple container is inlined" do
+      data = generate_data(:parameterized_tuple, [:integer, :atom, {:literal, :key}])
+
+      check all {int, atom, :key} <- data do
+        assert is_integer(int)
+        assert is_atom(atom)
+      end
+    end
+
+    test "map container is inlined" do
+      data = generate_data(:parameterized_map, list: [:integer])
+
+      check all %{key: list} <- data do
+        assert is_list(list)
+        assert Enum.all?(list, &is_integer/1)
+      end
+    end
+
+    test "nested containers are inlined" do
+      data = generate_data(:parameterized_dict, [:atom, :integer])
+
+      check all x <- data do
+        assert is_list(x)
+
+        Enum.each(x, fn {atom, int} ->
+          assert is_atom(atom)
+          assert is_integer(int)
+        end)
+      end
+    end
+
+    test "parameterized recursive types" do
+      data = generate_data(:parameterized_recursive_tuple, [:integer, :integer])
+
+      check all x <- data do
+        assert is_recursive_tuple(x)
+      end
+    end
+
+    test "parameterized recursive types with map or list containers" do
+      data = generate_data(:parameterized_recursive_forest, [:integer, :integer])
+
+      check all x <- data do
+        assert is_forest(x)
+      end
+    end
+  end
+
   defp is_forest({x, forests}) when is_integer(x) and is_list(forests) do
     Enum.all?(forests, &is_forest/1)
   end
@@ -734,6 +897,7 @@ defmodule StreamData.TypesTest do
   defp is_map_forest(%{int: x, forests: forests}) when is_integer(x) and is_list(forests) do
     Enum.all?(forests, &is_map_forest/1)
   end
+
   defp is_map_forest(%{int: x}) when is_integer(x), do: true
 
   defp is_recursive_integer(:zero), do: true

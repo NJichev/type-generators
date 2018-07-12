@@ -19,12 +19,45 @@ defmodule StreamDataTypes do
       #=> [{:asdf, 3}, {:aub, -1}, {:fae, 0}]
 
   ## Shrinking(TODO(njichev))
+  ## Parameterized Types(TODO(njichev): Explain the API indept)
+
+  When generating data for parameterized types you can pass in the type arguments in the third argument of `from_type`.
+  The arguments can be the following:
+    - any basic type(:integer, :atom, etc.)
+    - literal: (1 | 2 | :my_atom | [](empty list) | {} | %{})
+    - list: [arguments]
+    - tuple: [arguments]
+    - map: [{key, value}, {:optional, {key, value}}]
+    - user_type: user_type_name(user types are types defined in the same module)
+    - remote_type: {ModuleName, type_name} | {ModuleName, type_name, [arguments]}
+
+  You can think of [arguments] as the same thing you passed in expanding recursively.
+  ## Examples
+
+      defmodule MyModule do
+        @type simple(a) :: a
+        @type dict(a, b) :: list({a, b})
+      end
+
+      from_type(MyModule, :simple, [:integer]) |> Enum.take(3)
+      #=>  [1, 0, -1]
+
+      from_type(MyModule, :simple, [list: [list: [:integer]]]) |> Enum.take(3)
+      #=> [[], [], [[0, 2, -3], [0, 2, -1], []]]
+
+      from_type(MyModule, :dict, [:atom, :integer]) |> Enum.take(3)
+      #=> [[VE: 0], [], [h1K: 1]]
+
+
   """
   def from_type(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
+    args = rewrite_arguments(args)
+
     pick_type_from_beam(module, name, args)
+    |> inline_type_parameters(args)
     |> inline_user_type(module)
-    |> generate_from_type(args)
+    |> generate_from_type
   end
 
   defp pick_type_from_beam(module, name, args) do
@@ -65,12 +98,16 @@ defmodule StreamDataTypes do
   # otherwise raise an argument error.
   defp pick_type(types, args) do
     len = length(args)
-    type = Enum.find(types, fn {_name, type} -> vars(type) == len end)
+
+    type =
+      Enum.find(types, fn {_name, type} -> vars(type) == len end)
 
     if type do
       type
     else
-      raise ArgumentError, "Wrong amount of arguments passed."
+      raise ArgumentError, """
+      Could not find type with #{len} type arguments.
+      """
     end
   end
 
@@ -82,6 +119,8 @@ defmodule StreamDataTypes do
     vars(types)
   end
 
+  defp vars({:user_type, _, _, types}), do: vars(types)
+
   defp vars(types) when is_list(types) do
     types
     |> Enum.map(&vars(&1))
@@ -90,6 +129,93 @@ defmodule StreamDataTypes do
 
   defp vars(_), do: 0
 
+  defp rewrite_arguments(args) when is_list(args) do
+    Enum.map(args, &rewrite_argument/1)
+  end
+
+  defp rewrite_argument(:map), do: {:type, 0, :map, :any}
+  defp rewrite_argument(:list), do: {:type, 0, :map, :any}
+  defp rewrite_argument(type) when is_atom(type), do: {:type, 0, type, []}
+  defp rewrite_argument({:literal, literal}) when is_integer(literal), do: {:integer, 0, literal}
+  defp rewrite_argument({:literal, literal}) when is_atom(literal), do: {:atom, 0, literal}
+  defp rewrite_argument({:literal, []}), do: {:type, 0, nil, []}
+  defp rewrite_argument({:literal, %{}}), do: {:type, 0, :map, []}
+  defp rewrite_argument({:literal, {}}), do: {:type, 0, :tuple, []}
+
+  defp rewrite_argument({:map, fields}) do
+    rewritten_fields = Enum.map(fields, &rewrite_map_field/1)
+    {:type, 0, :map, rewritten_fields}
+  end
+
+  defp rewrite_argument({type, args}) when is_list(args) do
+    {:type, 0, type, rewrite_arguments(args)}
+  end
+
+  defp rewrite_argument({:user_type, user_type}) when is_atom(user_type),
+    do: {:user_type, 0, user_type, []}
+
+  defp rewrite_argument({:user_type, {user_type, arguments}})
+       when is_atom(user_type) and is_list(arguments) do
+    {:user_type, 0, user_type, rewrite_arguments(arguments)}
+  end
+
+  defp rewrite_argument({:remote_type, {module, name}}) when is_atom(module) and is_atom(name) do
+    {:remote_type, 0, [{:atom, 0, module}, {:atom, 0, name}, []]}
+  end
+
+  defp rewrite_argument({:remote_type, {module, name, args}})
+       when is_atom(module) and is_atom(name) and is_list(args) do
+    {:remote_type, 0, [{:atom, 0, module}, {:atom, 0, name}, rewrite_arguments(args)]}
+  end
+
+  defp rewrite_argument(type), do: type
+
+  defp rewrite_map_field({:optional, {key, value}}) do
+    key = rewrite_argument(key)
+    value = rewrite_argument(value)
+    {:type, 0, :map_field_assoc, [key, value]}
+  end
+
+  defp rewrite_map_field({key, value}) do
+    key = rewrite_argument(key)
+    value = rewrite_argument(value)
+    {:type, 0, :map_field_exact, [key, value]}
+  end
+
+  defp inline_type_parameters({name, {:var, _, _}}, [type]) do
+    {name, type}
+  end
+
+  defp inline_type_parameters({_name, {_, _, _}} = type, []) do
+    type
+  end
+
+  defp inline_type_parameters({name, {:type, line, container, args_with_var}}, args) do
+    {res, []} = replace_var(args_with_var, args)
+    {name, {:type, line, container, res}}
+  end
+
+  # There has to be a better way.
+  # Recursively go through every type argument and replace it with the head of the rewritten arguments.
+  #
+  def replace_var([{type, line, name, types} | tail], args) when type in [:type, :user_type] do
+    {x, rest_args} = replace_var(types, args)
+    {result, rest_args} = replace_var(tail, rest_args)
+    {[{type, line, name, x} | result], rest_args}
+  end
+
+  def replace_var([{:var, _, _} | tail1], [type | tail2]) do
+    {result, r} = replace_var(tail1, tail2)
+    {[type | result], r}
+  end
+
+  def replace_var([t | tail], args) do
+    {res, r} = replace_var(tail, args)
+    {[t | res], r}
+  end
+
+  def replace_var(l, a), do: {l, a}
+
   defp inline_user_type({name, type}, module) do
     {name, inline_user_type(type, module, name)}
   end
@@ -97,7 +223,7 @@ defmodule StreamDataTypes do
   defp inline_user_type({:type, line, :union, types}, module, name) do
     inlined =
       types
-      |> Enum.map(fn type -> inline_user_type(type, module, name) end)
+      |> Enum.map(&inline_user_type(&1, module, name))
 
     {:type, line, :union, inlined}
   end
@@ -138,7 +264,7 @@ defmodule StreamDataTypes do
 
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.
-  defp generate_from_type({name, {:type, _, :union, args}}, _args) do
+  defp generate_from_type({name, {:type, _, :union, args}}) do
     {nodes, leaves} = nodes_and_leaves(name, args)
     leaves = generate_union(leaves)
 
@@ -151,13 +277,13 @@ defmodule StreamDataTypes do
     end
   end
 
-  defp generate_from_type({name, type}, _args) do
+  defp generate_from_type({name, type}) do
     if recursive_without_union?(type, name) do
       leaves =
         rewrite_recursive_type(type, name)
         |> generate()
 
-        generate_recursive([type], leaves)
+      generate_recursive([type], leaves)
     else
       generate(type)
     end
@@ -173,7 +299,7 @@ defmodule StreamDataTypes do
     StreamData.tree(leaves, fn leaf ->
       nodes
       |> Enum.map(&map_user_type_to_leaf(&1, leaf))
-      |> Enum.map(&generate_from_type({:anonymous, &1}, []))
+      |> Enum.map(&generate_from_type({:anonymous, &1}))
       |> one_of
     end)
   end
@@ -418,14 +544,14 @@ defmodule StreamDataTypes do
     |> list_of(min_length: 1)
   end
 
-  defp generate({:remote_type, _, [{:atom, _, module}, {:atom, _, type}, []]}) do
+  defp generate({:remote_type, _, [{:atom, _, module}, {:atom, _, type}, args]}) do
     if protocol?(module) do
       raise ArgumentError, """
-            You have specified a type which relies or is the protocol #{module}.
-            Protocols are currently unsupported, instead try generating for the type which implements the protocol.
-            """
+      You have specified a type which relies or is the protocol #{module}.
+      Protocols are currently unsupported, instead try generating for the type which implements the protocol.
+      """
     else
-      from_type(module, type)
+      from_type(module, type, args)
     end
   end
 
@@ -510,7 +636,9 @@ defmodule StreamDataTypes do
             {:user_type, _, ^name, _} -> true
             _ -> false
           end)
-        _ -> false
+
+        _ ->
+          false
       end)
 
     {:type, line, :map, rewritten_fields}

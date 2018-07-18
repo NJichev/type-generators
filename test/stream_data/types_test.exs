@@ -888,6 +888,45 @@ defmodule StreamData.TypesTest do
         assert is_forest(x)
       end
     end
+
+    test "using remote types as arguments" do
+      data = generate_data(:parameterized_simple, remote_type: {String, :t})
+
+      check all x <- data do
+        assert is_binary(x)
+      end
+    end
+
+    test "using parameterized remote types" do
+      data = generate_data(:parameterized_keyword, [:float])
+
+      check all x <- data do
+        assert is_list(x)
+
+        Enum.each(x, fn {atom, float} ->
+          assert is_atom(atom)
+          assert is_float(float)
+        end)
+      end
+    end
+
+    test "using parameterized remote types with remote type arguments" do
+      data = generate_data(:parameterized_keyword, remote_type: {Keyword, :t, [:integer]})
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+
+        Enum.each(x, fn {atom, keyword_list} ->
+          assert is_atom(atom)
+          assert is_list(keyword_list)
+
+          Enum.each(keyword_list, fn {atom, integer} ->
+            assert is_atom(atom)
+            assert is_integer(integer)
+          end)
+        end)
+      end
+    end
   end
 
   defp is_forest({x, forests}) when is_integer(x) and is_list(forests) do

@@ -32,6 +32,7 @@ defmodule StreamDataTypes do
     - remote_type: {ModuleName, type_name} | {ModuleName, type_name, [arguments]}
 
   You can think of [arguments] as the same thing you passed in expanding recursively.
+
   ## Examples
 
       defmodule MyModule do
@@ -99,8 +100,7 @@ defmodule StreamDataTypes do
   defp pick_type(types, args) do
     len = length(args)
 
-    type =
-      Enum.find(types, fn {_name, type} -> vars(type) == len end)
+    type = Enum.find(types, fn {_name, type} -> vars(type) == len end)
 
     if type do
       type
@@ -115,11 +115,11 @@ defmodule StreamDataTypes do
   # Used to choose the correct type for a user.
   defp vars({:var, _, _}), do: 1
 
-  defp vars({:type, _, _, types}) do
-    vars(types)
-  end
+  defp vars({:type, _, _, args}), do: vars(args)
 
-  defp vars({:user_type, _, _, types}), do: vars(types)
+  defp vars({:user_type, _, _, args}), do: vars(args)
+
+  defp vars({:remote_type, _, [_module, _name, args]}), do: vars(args)
 
   defp vars(types) when is_list(types) do
     types
@@ -191,8 +191,16 @@ defmodule StreamDataTypes do
   end
 
   defp inline_type_parameters({name, {:type, line, container, args_with_var}}, args) do
-    {res, []} = replace_var(args_with_var, args)
-    {name, {:type, line, container, res}}
+    {args_without_var, []} = replace_var(args_with_var, args)
+    {name, {:type, line, container, args_without_var}}
+  end
+
+  defp inline_type_parameters(
+         {name, {:remote_type, line, [{:atom, _, module}, {:atom, _, type}, args_with_var]}},
+         args
+       ) do
+    {args_without_var, []} = replace_var(args_with_var, args)
+    {name, {:remote_type, line, [{:atom, 0, module}, {:atom, 0, type}, args_without_var]}}
   end
 
   # There has to be a better way.

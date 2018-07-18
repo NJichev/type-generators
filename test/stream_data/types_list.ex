@@ -138,4 +138,5 @@ defmodule StreamDataTest.TypesList do
   @type parameterized_dict(key, value) :: list({key, value})
   @type parameterized_recursive_tuple(a) :: nil | {a, parameterized_recursive_tuple(a)}
   @type parameterized_recursive_forest(a) :: {a, [parameterized_recursive_forest(a)]}
+  @type parameterized_keyword(a) :: Keyword.t(a)
 end

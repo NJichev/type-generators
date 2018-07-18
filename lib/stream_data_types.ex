@@ -22,9 +22,30 @@ defmodule StreamDataTypes do
   """
   def from_type(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
+
+    choose_type(module, name, args)
+    |> generate_from_type(args)
+  end
+
+
+  @doc """
+  Returns the type AST for a defined by a user type.
+  This will search the .beam file for the module and choose the type
+  based on the types contained.
+  Afterwards the arguments and user defined types will be inlined to simplify the type AST to simple types.
+
+  ## Examples
+
+      defmodule MyModule do
+        @type t :: {atom(), integer()}
+      end
+
+      choose_type(String, :t)
+      #=> {:t, {:type, 206, :binary, []}}
+  """
+  def choose_type(module, name, args \\ []) do
     pick_type_from_beam(module, name, args)
     |> inline_user_type(module)
-    |> generate_from_type(args)
   end
 
   defp pick_type_from_beam(module, name, args) do
@@ -135,6 +156,8 @@ defmodule StreamDataTypes do
   end
 
   defp inline_user_type(type, _module, _name), do: type
+
+  def generate_public(type), do: generate(type)
 
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.

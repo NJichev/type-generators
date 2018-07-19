@@ -2,9 +2,11 @@ defmodule StreamDataTypes do
   import StreamData
 
   @doc """
-  Returns any kind of generator by a given type definition.
-  The function takes in a module name, function name and a keyword list
-  of type arguments(defaults to []).
+  Accepts a user type definition and returns a StreamData generator.
+  The function parameters are:
+      - module name
+      - function name
+      - list of data generators to be used for parameterized types
 
   ## Examples
 
@@ -18,20 +20,14 @@ defmodule StreamDataTypes do
       from_type(MyModule, :t) |> Enum.take(3)
       #=> [{:asdf, 3}, {:aub, -1}, {:fae, 0}]
 
-  ## Shrinking(TODO(njichev))
-  ## Parameterized Types(TODO(njichev): Explain the API indept)
+  ## Parameterized Types
 
-  When generating data for parameterized types you can pass in the type arguments in the third argument of `from_type`.
-  The arguments can be the following:
-    - any basic type(:integer, :atom, etc.)
-    - literal: (1 | 2 | :my_atom | [](empty list) | {} | %{})
-    - list: [arguments]
-    - tuple: [arguments]
-    - map: [{key, value}, {:optional, {key, value}}]
-    - user_type: user_type_name(user types are types defined in the same module)
-    - remote_type: {ModuleName, type_name} | {ModuleName, type_name, [arguments]}
+  Parameterized Types take in a third argument - a list of StreamData
+  generators. There is no restriction on the used generators.
+  You should expect every variable to be replaced with the types of the
+  given generators. The order of the variables is as written in the
+  type definition.
 
-  You can think of [arguments] as the same thing you passed in expanding recursively.
 
   ## Examples
 
@@ -40,20 +36,32 @@ defmodule StreamDataTypes do
         @type dict(a, b) :: list({a, b})
       end
 
-      from_type(MyModule, :simple, [:integer]) |> Enum.take(3)
+      import StreamData
+
+      from_type(MyModule, :simple, [integer()])
+      |> Enum.take(3)
       #=>  [1, 0, -1]
 
-      from_type(MyModule, :simple, [list: [list: [:integer]]]) |> Enum.take(3)
+      from_type(MyModule, :simple, [list_of(list_of(integer()))])
+      |> Enum.take(3)
       #=> [[], [], [[0, 2, -3], [0, 2, -1], []]]
 
-      from_type(MyModule, :dict, [:atom, :integer]) |> Enum.take(3)
+      from_type(MyModule, :dict, [atom(:alphanumeric), integer()])
+      |> Enum.take(3)
       #=> [[VE: 0], [], [h1K: 1]]
 
 
+  ## Shrinking
+
+  Your types will shrink as close as possible to `StreamData`'s' primitive
+  data generators. You can expect that most of your types will shrink
+  towards the "smallest" representitive of your type.
+
+  Check `StreamData`'s documentation for more information on shrinking.
   """
   def from_type(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
-    args = rewrite_arguments(args)
+    validate_arguments(args)
 
     pick_type_from_beam(module, name, args)
     |> inline_type_parameters(args)
@@ -129,57 +137,16 @@ defmodule StreamDataTypes do
 
   defp vars(_), do: 0
 
-  defp rewrite_arguments(args) when is_list(args) do
-    Enum.map(args, &rewrite_argument/1)
-  end
+  defp validate_arguments([]), do: :ok
+  defp validate_arguments([%StreamData{} | rest]), do: validate_arguments(rest)
 
-  defp rewrite_argument(:map), do: {:type, 0, :map, :any}
-  defp rewrite_argument(:list), do: {:type, 0, :map, :any}
-  defp rewrite_argument(type) when is_atom(type), do: {:type, 0, type, []}
-  defp rewrite_argument({:literal, literal}) when is_integer(literal), do: {:integer, 0, literal}
-  defp rewrite_argument({:literal, literal}) when is_atom(literal), do: {:atom, 0, literal}
-  defp rewrite_argument({:literal, []}), do: {:type, 0, nil, []}
-  defp rewrite_argument({:literal, %{}}), do: {:type, 0, :map, []}
-  defp rewrite_argument({:literal, {}}), do: {:type, 0, :tuple, []}
+  defp validate_arguments(argument) do
+    raise ArgumentError, """
+    Expected a StreamData generator, got #{inspect(argument)}.
 
-  defp rewrite_argument({:map, fields}) do
-    rewritten_fields = Enum.map(fields, &rewrite_map_field/1)
-    {:type, 0, :map, rewritten_fields}
-  end
-
-  defp rewrite_argument({type, args}) when is_list(args) do
-    {:type, 0, type, rewrite_arguments(args)}
-  end
-
-  defp rewrite_argument({:user_type, user_type}) when is_atom(user_type),
-    do: {:user_type, 0, user_type, []}
-
-  defp rewrite_argument({:user_type, {user_type, arguments}})
-       when is_atom(user_type) and is_list(arguments) do
-    {:user_type, 0, user_type, rewrite_arguments(arguments)}
-  end
-
-  defp rewrite_argument({:remote_type, {module, name}}) when is_atom(module) and is_atom(name) do
-    {:remote_type, 0, [{:atom, 0, module}, {:atom, 0, name}, []]}
-  end
-
-  defp rewrite_argument({:remote_type, {module, name, args}})
-       when is_atom(module) and is_atom(name) and is_list(args) do
-    {:remote_type, 0, [{:atom, 0, module}, {:atom, 0, name}, rewrite_arguments(args)]}
-  end
-
-  defp rewrite_argument(type), do: type
-
-  defp rewrite_map_field({:optional, {key, value}}) do
-    key = rewrite_argument(key)
-    value = rewrite_argument(value)
-    {:type, 0, :map_field_assoc, [key, value]}
-  end
-
-  defp rewrite_map_field({key, value}) do
-    key = rewrite_argument(key)
-    value = rewrite_argument(value)
-    {:type, 0, :map_field_exact, [key, value]}
+    Try passing in a list of StreamData generators:
+        - from_type(YourModule, function_name, [StreamData.integer()])
+    """
   end
 
   defp inline_type_parameters({name, {:var, _, _}}, [type]) do
@@ -325,6 +292,7 @@ defmodule StreamDataTypes do
   end
 
   defp map_user_type_to_leaf({_, _, _l} = type, _leaf), do: type
+  defp map_user_type_to_leaf(%StreamData{} = type, _leaf), do: type
 
   defp recursive_without_union?({:type, _, _, :any}, _name), do: false
 
@@ -559,7 +527,7 @@ defmodule StreamDataTypes do
       Protocols are currently unsupported, instead try generating for the type which implements the protocol.
       """
     else
-      from_type(module, type, args)
+      from_type(module, type, Enum.map(args, &generate/1))
     end
   end
 

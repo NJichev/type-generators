@@ -126,11 +126,15 @@ defmodule StreamDataTest.TypesList do
           optional(:forests) => recursive_map_forest()
         }
 
-  ## Protocol Types
+  ## Remote types
+  @type remote_string :: String.t()
+  @type remote_keyword_list :: Keyword.t(integer())
+
+  ## Protocol types
   @type protocol_enumerable :: Enumerable.t()
   @type protocol_enum :: Enum.t()
 
-  ## Parameterized Types
+  ## Parameterized types
   @type parameterized_simple(a) :: a
   @type parameterized_list(a) :: list(a)
   @type parameterized_tuple(a, b, c) :: {a, b, c}

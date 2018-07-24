@@ -2,7 +2,8 @@ defmodule StreamData.TypesTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
-  alias StreamDataTypes, as: Types
+  alias StreamDataTest.TypesList
+  import StreamDataTypes
 
   test "raises when missing a type" do
     assert_raise(
@@ -20,14 +21,14 @@ defmodule StreamData.TypesTest do
       Are you sure you have passed in the correct module name?
       """,
       fn ->
-        Types.from_type(DoesNotExist, :some_type)
+        from_type(DoesNotExist, :some_type)
       end
     )
   end
 
   test "raises when wrong number of arguments given" do
-    assert_raise(ArgumentError, "Wrong amount of arguments passed.", fn ->
-      generate_data(:basic_atom, v: :integer)
+    assert_raise(ArgumentError, ~r/Could not find type with/, fn ->
+      generate_data(:basic_atom, [StreamData.integer()])
     end)
   end
 
@@ -88,19 +89,15 @@ defmodule StreamData.TypesTest do
     end
 
     test "pid" do
-      assert_raise(
-        ArgumentError,
-        ~r/Pid\/Port types are not supported./,
-        fn -> generate_data(:basic_pid) end
-      )
+      assert_raise(ArgumentError, ~r/Pid\/Port types are not supported./, fn ->
+        generate_data(:basic_pid)
+      end)
     end
 
     test "port" do
-      assert_raise(
-        ArgumentError,
-        ~r/Pid\/Port types are not supported./,
-        fn -> generate_data(:basic_port) end
-      )
+      assert_raise(ArgumentError, ~r/Pid\/Port types are not supported./, fn ->
+        generate_data(:basic_port)
+      end)
     end
 
     # Numbers
@@ -582,6 +579,29 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "remote types" do
+    test "without parameters" do
+      data = generate_data(:remote_string)
+
+      check all x <- data do
+        assert is_bitstring(x)
+      end
+    end
+
+    test "remote types with a passed in compile time parameter" do
+      data = generate_data(:remote_keyword_list)
+
+      check all keyword_list <- data do
+        assert is_list(keyword_list)
+
+        Enum.each(keyword_list, fn {atom, integer} ->
+          assert is_atom(atom)
+          assert is_integer(integer)
+        end)
+      end
+    end
+  end
+
   describe "union types" do
     test "with two types" do
       data = generate_data(:union_with_two)
@@ -696,7 +716,7 @@ defmodule StreamData.TypesTest do
     test "forest with maps" do
       data = generate_data(:recursive_map_forest)
 
-      #TODO: Figure out why maps generate so much duplicates
+      # TODO: Figure out why maps generate so much duplicates
       check all x <- data, max_runs: 1 do
         assert is_map_forest(x)
       end
@@ -727,6 +747,132 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  describe "parameterized types" do
+    test "accepts only generators as arguments" do
+      assert_raise(ArgumentError, ~r/Expected a StreamData generator/, fn ->
+        generate_data(:parameterized_simple, [:integer])
+      end)
+    end
+
+    test "you can pass in basic generators as arguments" do
+      data = generate_data(:parameterized_simple, [generate_data(:basic_atom)])
+
+      check all atom <- data do
+        assert is_atom(atom)
+      end
+    end
+
+    test "list arguments are passed in" do
+      data = generate_data(:parameterized_list, [generate_data(:basic_integer)])
+
+      check all list <- data do
+        assert is_list(list)
+        assert Enum.all?(list, &is_integer/1)
+      end
+    end
+
+    test "tuple container need correct size of arguments" do
+      data =
+        generate_data(:parameterized_tuple, [
+          generate_data(:basic_integer),
+          generate_data(:basic_atom),
+          StreamData.constant(:key)
+        ])
+
+      check all {int, atom, :key} <- data do
+        assert is_integer(int)
+        assert is_atom(atom)
+      end
+    end
+
+    test "map container can be parameterized" do
+      data =
+        generate_data(:parameterized_map, [
+          generate_data(:basic_list_type)
+        ])
+
+      check all %{key: list} <- data do
+        assert is_list(list)
+        assert Enum.all?(list, &is_integer/1)
+      end
+    end
+
+    test "nested containers are parameterized" do
+      data =
+        generate_data(:parameterized_dict, [
+          generate_data(:basic_atom),
+          generate_data(:basic_integer)
+        ])
+
+      check all x <- data do
+        assert is_list(x)
+
+        Enum.each(x, fn {atom, int} ->
+          assert is_atom(atom)
+          assert is_integer(int)
+        end)
+      end
+    end
+
+    test "parameterized recursive types" do
+      integers = generate_data(:basic_integer)
+      data = generate_data(:parameterized_recursive_tuple, [integers, integers])
+
+      check all x <- data do
+        assert is_recursive_tuple(x)
+      end
+    end
+
+    test "parameterized recursive types with map or list containers" do
+      integers = generate_data(:basic_integer)
+      data = generate_data(:parameterized_recursive_forest, [integers, integers])
+
+      check all x <- data do
+        assert is_forest(x)
+      end
+    end
+
+    test "using remote types as arguments" do
+      data = generate_data(:parameterized_simple, [from_type(String, :t)])
+
+      check all x <- data do
+        assert is_binary(x)
+      end
+    end
+
+    test "using parameterized remote types" do
+      data = generate_data(:parameterized_keyword, [generate_data(:basic_float)])
+
+      check all list <- data do
+        assert is_list(list)
+
+        Enum.each(list, fn {atom, float} ->
+          assert is_atom(atom)
+          assert is_float(float)
+        end)
+      end
+    end
+
+    test "using parameterized remote types with remote type arguments" do
+      data =
+        generate_data(:parameterized_keyword, [from_type(Keyword, :t, [StreamData.integer()])])
+
+      check all x <- data, max_runs: 25 do
+        assert is_list(x)
+
+        Enum.each(x, fn {atom, keyword_list} ->
+          assert is_atom(atom)
+          assert is_list(keyword_list)
+
+          Enum.each(keyword_list, fn {atom, integer} ->
+            assert is_atom(atom)
+            assert is_integer(integer)
+          end)
+        end)
+      end
+    end
+  end
+
   defp is_forest({x, forests}) when is_integer(x) and is_list(forests) do
     Enum.all?(forests, &is_forest/1)
   end
@@ -734,6 +880,7 @@ defmodule StreamData.TypesTest do
   defp is_map_forest(%{int: x, forests: forests}) when is_integer(x) and is_list(forests) do
     Enum.all?(forests, &is_map_forest/1)
   end
+
   defp is_map_forest(%{int: x}) when is_integer(x), do: true
 
   defp is_recursive_integer(:zero), do: true
@@ -783,6 +930,6 @@ defmodule StreamData.TypesTest do
   defp is_iolist(_), do: false
 
   defp generate_data(name, args \\ []) do
-    Types.from_type(StreamDataTest.TypesList, name, args)
+    from_type(TypesList, name, args)
   end
 end

@@ -2,9 +2,11 @@ defmodule StreamDataTypes do
   import StreamData
 
   @doc """
-  Returns any kind of generator by a given type definition.
-  The function takes in a module name, function name and a keyword list
-  of type arguments(defaults to []).
+  Accepts a user type definition and returns a StreamData generator.
+  The function parameters are:
+      - module name
+      - function name
+      - list of data generators to be used for parameterized types
 
   ## Examples
 
@@ -18,13 +20,53 @@ defmodule StreamDataTypes do
       from_type(MyModule, :t) |> Enum.take(3)
       #=> [{:asdf, 3}, {:aub, -1}, {:fae, 0}]
 
-  ## Shrinking(TODO(njichev))
+  ## Parameterized Types
+
+  Parameterized Types take in a third argument - a list of StreamData
+  generators. There is no restriction on the used generators.
+  You should expect every variable to be replaced with the types of the
+  given generators. The order of the variables is as written in the
+  type definition.
+
+
+  ## Examples
+
+      defmodule MyModule do
+        @type simple(a) :: a
+        @type dict(a, b) :: list({a, b})
+      end
+
+      import StreamData
+
+      from_type(MyModule, :simple, [integer()])
+      |> Enum.take(3)
+      #=>  [1, 0, -1]
+
+      from_type(MyModule, :simple, [list_of(list_of(integer()))])
+      |> Enum.take(3)
+      #=> [[], [], [[0, 2, -3], [0, 2, -1], []]]
+
+      from_type(MyModule, :dict, [atom(:alphanumeric), integer()])
+      |> Enum.take(3)
+      #=> [[VE: 0], [], [h1K: 1]]
+
+
+  ## Shrinking
+
+  Your types will shrink as close as possible to `StreamData`'s' primitive
+  data generators. You can expect that most of your types will shrink
+  towards the "smallest" representitive of your type.
+
+  Check `StreamData`'s documentation for more information on shrinking.
   """
   def from_type(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
+    validate_arguments(args)
+
     pick_type_from_beam(module, name, args)
+    |> inline_type_parameters(args)
     |> inline_user_type(module)
-    |> generate_from_type(args)
+    |> generate_from_type
   end
 
   defp pick_type_from_beam(module, name, args) do
@@ -65,12 +107,15 @@ defmodule StreamDataTypes do
   # otherwise raise an argument error.
   defp pick_type(types, args) do
     len = length(args)
+
     type = Enum.find(types, fn {_name, type} -> vars(type) == len end)
 
     if type do
       type
     else
-      raise ArgumentError, "Wrong amount of arguments passed."
+      raise ArgumentError, """
+      Could not find type with #{len} type arguments.
+      """
     end
   end
 
@@ -78,9 +123,11 @@ defmodule StreamDataTypes do
   # Used to choose the correct type for a user.
   defp vars({:var, _, _}), do: 1
 
-  defp vars({:type, _, _, types}) do
-    vars(types)
-  end
+  defp vars({:type, _, _, args}), do: vars(args)
+
+  defp vars({:user_type, _, _, args}), do: vars(args)
+
+  defp vars({:remote_type, _, [_module, _name, args]}), do: vars(args)
 
   defp vars(types) when is_list(types) do
     types
@@ -90,6 +137,60 @@ defmodule StreamDataTypes do
 
   defp vars(_), do: 0
 
+  defp validate_arguments([]), do: :ok
+  defp validate_arguments([%StreamData{} | rest]), do: validate_arguments(rest)
+
+  defp validate_arguments(argument) do
+    raise ArgumentError, """
+    Expected a StreamData generator, got #{inspect(argument)}.
+
+    Try passing in a list of StreamData generators:
+        - from_type(YourModule, function_name, [StreamData.integer()])
+    """
+  end
+
+  defp inline_type_parameters({name, {:var, _, _}}, [type]) do
+    {name, type}
+  end
+
+  defp inline_type_parameters({_name, {_, _, _}} = type, []) do
+    type
+  end
+
+  defp inline_type_parameters({name, {:type, line, container, args_with_var}}, args) do
+    {args_without_var, []} = replace_var(args_with_var, args)
+    {name, {:type, line, container, args_without_var}}
+  end
+
+  defp inline_type_parameters(
+         {name, {:remote_type, line, [{:atom, _, module}, {:atom, _, type}, args_with_var]}},
+         args
+       ) do
+    {args_without_var, []} = replace_var(args_with_var, args)
+    {name, {:remote_type, line, [{:atom, 0, module}, {:atom, 0, type}, args_without_var]}}
+  end
+
+  # There has to be a better way.
+  # Recursively go through every type argument and replace it with the head of the rewritten arguments.
+  #
+  def replace_var([{type, line, name, types} | tail], args) when type in [:type, :user_type] do
+    {x, rest_args} = replace_var(types, args)
+    {result, rest_args} = replace_var(tail, rest_args)
+    {[{type, line, name, x} | result], rest_args}
+  end
+
+  def replace_var([{:var, _, _} | tail1], [type | tail2]) do
+    {result, r} = replace_var(tail1, tail2)
+    {[type | result], r}
+  end
+
+  def replace_var([t | tail], args) do
+    {res, r} = replace_var(tail, args)
+    {[t | res], r}
+  end
+
+  def replace_var(l, a), do: {l, a}
+
   defp inline_user_type({name, type}, module) do
     {name, inline_user_type(type, module, name)}
   end
@@ -97,7 +198,7 @@ defmodule StreamDataTypes do
   defp inline_user_type({:type, line, :union, types}, module, name) do
     inlined =
       types
-      |> Enum.map(fn type -> inline_user_type(type, module, name) end)
+      |> Enum.map(&inline_user_type(&1, module, name))
 
     {:type, line, :union, inlined}
   end
@@ -138,7 +239,7 @@ defmodule StreamDataTypes do
 
   # Handle type generation/recursive/union types here.
   # Maybe module name should be passed.
-  defp generate_from_type({name, {:type, _, :union, args}}, _args) do
+  defp generate_from_type({name, {:type, _, :union, args}}) do
     {nodes, leaves} = nodes_and_leaves(name, args)
     leaves = generate_union(leaves)
 
@@ -151,13 +252,13 @@ defmodule StreamDataTypes do
     end
   end
 
-  defp generate_from_type({name, type}, _args) do
+  defp generate_from_type({name, type}) do
     if recursive_without_union?(type, name) do
       leaves =
         rewrite_recursive_type(type, name)
         |> generate()
 
-        generate_recursive([type], leaves)
+      generate_recursive([type], leaves)
     else
       generate(type)
     end
@@ -173,7 +274,7 @@ defmodule StreamDataTypes do
     StreamData.tree(leaves, fn leaf ->
       nodes
       |> Enum.map(&map_user_type_to_leaf(&1, leaf))
-      |> Enum.map(&generate_from_type({:anonymous, &1}, []))
+      |> Enum.map(&generate_from_type({:anonymous, &1}))
       |> one_of
     end)
   end
@@ -191,6 +292,7 @@ defmodule StreamDataTypes do
   end
 
   defp map_user_type_to_leaf({_, _, _l} = type, _leaf), do: type
+  defp map_user_type_to_leaf(%StreamData{} = type, _leaf), do: type
 
   defp recursive_without_union?({:type, _, _, :any}, _name), do: false
 
@@ -418,14 +520,14 @@ defmodule StreamDataTypes do
     |> list_of(min_length: 1)
   end
 
-  defp generate({:remote_type, _, [{:atom, _, module}, {:atom, _, type}, []]}) do
+  defp generate({:remote_type, _, [{:atom, _, module}, {:atom, _, type}, args]}) do
     if protocol?(module) do
       raise ArgumentError, """
-            You have specified a type which relies or is the protocol #{module}.
-            Protocols are currently unsupported, instead try generating for the type which implements the protocol.
-            """
+      You have specified a type which relies or is the protocol #{module}.
+      Protocols are currently unsupported, instead try generating for the type which implements the protocol.
+      """
     else
-      from_type(module, type)
+      from_type(module, type, Enum.map(args, &generate/1))
     end
   end
 
@@ -510,7 +612,9 @@ defmodule StreamDataTypes do
             {:user_type, _, ^name, _} -> true
             _ -> false
           end)
-        _ -> false
+
+        _ ->
+          false
       end)
 
     {:type, line, :map, rewritten_fields}

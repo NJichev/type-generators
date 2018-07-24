@@ -113,7 +113,8 @@ defmodule StreamDataTest.TypesList do
   @type recursive_tuple :: nil | {integer(), recursive_tuple()}
 
   @typep operator :: :+ | :- | :* | :/
-  @type recursive_expression :: integer() | {recursive_expression(), operator(), recursive_expression()}
+  @type recursive_expression ::
+          integer() | {recursive_expression(), operator(), recursive_expression()}
 
   @typep zero :: :zero
   @type recursive_integers :: zero | %{succ: recursive_integers}
@@ -125,7 +126,21 @@ defmodule StreamDataTest.TypesList do
           optional(:forests) => recursive_map_forest()
         }
 
-  ## Protocol Types
+  ## Remote types
+  @type remote_string :: String.t()
+  @type remote_keyword_list :: Keyword.t(integer())
+
+  ## Protocol types
   @type protocol_enumerable :: Enumerable.t()
-  @type protocol_enum :: Enumerable.t()
+  @type protocol_enum :: Enum.t()
+
+  ## Parameterized types
+  @type parameterized_simple(a) :: a
+  @type parameterized_list(a) :: list(a)
+  @type parameterized_tuple(a, b, c) :: {a, b, c}
+  @type parameterized_map(a) :: %{key: a}
+  @type parameterized_dict(key, value) :: list({key, value})
+  @type parameterized_recursive_tuple(a) :: nil | {a, parameterized_recursive_tuple(a)}
+  @type parameterized_recursive_forest(a) :: {a, [parameterized_recursive_forest(a)]}
+  @type parameterized_keyword(a) :: Keyword.t(a)
 end

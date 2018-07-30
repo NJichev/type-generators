@@ -1054,10 +1054,12 @@ defmodule StreamDataTypes do
       module.__protocol__(:module) == module
   end
 
+  defp compose([f]) when is_function(f, 1), do: f
   defp compose(functions) do
     fn x -> Enum.all?(functions, & &1.(x)) end
   end
 
+  defp is_one_of([f]) when is_function(f, 1), do: f
   defp is_one_of(functions) do
     fn x -> Enum.any?(functions, & &1.(x)) end
   end

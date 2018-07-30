@@ -1251,6 +1251,7 @@ defmodule StreamData.TypesTest do
       integers = generate_data(:basic_integer)
       {generator, member} = generate_data(:parameterized_recursive_forest, [integers, integers])
 
+      refute member.({0, [<<90, 224, 68, 77, 88, 65, 12, 6, 163>>]})
       check all x <- generator,
                 y <- term(),
                 !is_forest(y) do

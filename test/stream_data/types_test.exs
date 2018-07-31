@@ -1323,6 +1323,24 @@ defmodule StreamData.TypesTest do
     end
   end
 
+  test "pid type validation" do
+    member = type_validator_for(TypesList, :basic_pid)
+
+    Process.list()
+    |> Enum.each(&assert(member.(&1)))
+
+    check all y <- term(), do: refute(member.(y))
+  end
+
+  test "port type validation" do
+    member = type_validator_for(TypesList, :basic_port)
+
+    Port.list()
+    |> Enum.each(&assert(member.(&1)))
+
+    check all y <- term(), do: refute(member.(y))
+  end
+
   defp is_forest({x, forests}) when is_integer(x) and is_list(forests) do
     Enum.all?(forests, &is_forest/1)
   end

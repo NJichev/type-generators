@@ -705,11 +705,19 @@ defmodule StreamDataTypes do
   end
 
   defp validator_for_type({:type, _, type, _}) when type in [:none, :no_return] do
-    # TODO
+    # For function type validations - the result type should report whether it can
+    # raise and then that should get handled there
+    raise ArgumentError, """
+    Type validations for the none(bottom) type are not supported.
+    """
   end
 
-  defp validator_for_type({:type, _, type, _}) when type in [:pid, :port] do
-    # TODO
+  defp validator_for_type({:type, _, :pid, _}) do
+    &is_pid/1
+  end
+
+  defp validator_for_type({:type, _, :port, _}) do
+    &is_port/1
   end
 
   defp validator_for_type({:type, _, :integer, _}) do

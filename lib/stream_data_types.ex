@@ -89,6 +89,37 @@ defmodule StreamDataTypes do
     |> validator_for()
   end
 
+  # NOTE: arity might be a list of functions:
+  # if you have a result type with parameters, then those functions will
+  # check the inner shape of the type
+  def validate(module, name, arity)
+      when is_atom(module) and is_atom(name) and is_integer(arity) do
+    fun = :erlang.make_fun(module, name, arity)
+
+    {args, return_type} = read_function_spec(module, name, arity)
+
+    generator =
+      args
+      |> Enum.map(&generate/1)
+      |> List.to_tuple()
+      |> tuple()
+      |> map(&Tuple.to_list/1)
+
+    member = validator_for({name, return_type})
+
+    fun = fn args ->
+      return_type = apply(fun, args)
+
+      if member.(return_type) do
+        {:ok, nil}
+      else
+        {:error, {args, return_type}}
+      end
+    end
+
+    check_all(generator, [initial_seed: :os.timestamp()], fun)
+  end
+
   defp pick_type_from_beam(module, name, args) do
     type = for pair = {^name, _type} <- beam_types(module), do: pair
 
@@ -100,6 +131,37 @@ defmodule StreamDataTypes do
       types when is_list(types) ->
         types
         |> pick_type(args)
+    end
+  end
+
+  def read_function_spec(module, function, arity) do
+    type =
+      beam_specifications(module, function)
+      |> Enum.find(fn {args, _return} -> length(args) == arity end)
+
+    if type do
+      type
+    else
+      raise ArgumentError, "Wrong amount of arguments passed."
+    end
+  end
+
+  defp beam_specifications(module, name) do
+    with {^module, beam, _file} <- :code.get_object_code(module),
+         {:ok, {^module, [abstract_code: {:raw_abstract_v1, abstract_code}]}} <-
+           :beam_lib.chunks(beam, [:abstract_code]) do
+      for {:attribute, _line, :spec,
+           {{^name, _}, [{:type, _, :fun, [{:type, _, :product, argument_types}, result_type]}]}} <-
+            abstract_code,
+          do: {argument_types, result_type}
+    else
+      _ ->
+        msg = """
+        Could not find .beam file for Module #{inspect(module)}.
+        Are you sure you have passed in the correct module name?
+        """
+
+        raise ArgumentError, msg
     end
   end
 

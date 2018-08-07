@@ -901,11 +901,11 @@ defmodule StreamDataTypes do
   end
 
   defp validator_for_type({:type, _, :byte, []}) do
-    compose([&is_integer/1, &(&1 in 0..255)])
+    &(&1 in 0..255)
   end
 
   defp validator_for_type({:type, _, :char, []}) do
-    compose([&is_integer/1, &(&1 in 0..0x10FFFF)])
+    &(&1 in 0..0x10FFFF)
   end
 
   defp validator_for_type({:type, _, :bitstring, []}) do

@@ -61,21 +61,37 @@ defmodule StreamDataTypes do
   """
   def from_type(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
-    validate_arguments(args)
+    validate_generators(args)
 
     pick_type_from_beam(module, name, args)
     |> inline_type_parameters(args)
     |> inline_user_type(module)
-    |> generate_from_type
+    |> generate_from_type()
+  end
+
+  def from_type_with_validator(module, name, args \\ [])
+      when is_atom(module) and is_atom(name) and is_list(args) do
+    validate_arguments(args)
+
+    {
+      from_type(module, name, Enum.map(args, &elem(&1, 0))),
+      type_validator_for(module, name, Enum.map(args, &elem(&1, 1)))
+    }
+  end
+
+  def type_validator_for(module, name, args \\ [])
+      when is_atom(module) and is_atom(name) and is_list(args) do
+    validate_functions(args)
+
+    pick_type_from_beam(module, name, args)
+    |> inline_type_parameters(args)
+    |> inline_user_type(module)
+    |> validator_for()
   end
 
   defp pick_type_from_beam(module, name, args) do
     type = for pair = {^name, _type} <- beam_types(module), do: pair
 
-    # pick correct type, when multiple
-    # Validate outer is list/map/tuple when having args
-    # Convert args
-    # put args in type tuple
     case type do
       [] ->
         raise ArgumentError,
@@ -137,15 +153,41 @@ defmodule StreamDataTypes do
 
   defp vars(_), do: 0
 
-  defp validate_arguments([]), do: :ok
-  defp validate_arguments([%StreamData{} | rest]), do: validate_arguments(rest)
+  defp validate_generators([]), do: :ok
+  defp validate_generators([%StreamData{} | rest]), do: validate_generators(rest)
 
-  defp validate_arguments(argument) do
+  defp validate_generators(argument) do
     raise ArgumentError, """
     Expected a StreamData generator, got #{inspect(argument)}.
 
     Try passing in a list of StreamData generators:
         - from_type(YourModule, function_name, [StreamData.integer()])
+    """
+  end
+
+  defp validate_functions([]), do: :ok
+  defp validate_functions([fun | rest]) when is_function(fun, 1), do: validate_functions(rest)
+
+  defp validate_functions(argument) do
+    raise ArgumentError, """
+    Expected a member function, got #{inspect(argument)}.
+
+    Try passing in a list of member functions:
+        - validator_from_type(YourModule, type_name, [&is_integer/1])
+    """
+  end
+
+  defp validate_arguments([]), do: :ok
+
+  defp validate_arguments([{%StreamData{}, fun} | rest]) when is_function(fun, 1),
+    do: validate_arguments(rest)
+
+  defp validate_arguments(argument) do
+    raise ArgumentError, """
+    Expected a StreamData generator, got #{inspect(argument)}.
+
+    Try passing in a list of tuples of StreamData generators and type member functions:
+        - from_type(YourModule, type_name, [{StreamData.integer(), &is_integer/1}])
     """
   end
 
@@ -569,14 +611,6 @@ defmodule StreamDataTypes do
     generate_union(args)
   end
 
-  defp char() do
-    integer(0..0x10FFFF)
-  end
-
-  defp non_negative_integer() do
-    map(integer(), &abs/1)
-  end
-
   defp generate_map_field({:type, _, :map_field_exact, [{_, _, key}, value]}) do
     value = generate(value)
 
@@ -596,6 +630,398 @@ defmodule StreamDataTypes do
       generate(key),
       generate(value)
     )
+  end
+
+  # Handle recursive/unions here
+  defp validator_for({name, {:type, _, :union, args}}) do
+    {nodes, leaves} = nodes_and_leaves(name, args)
+
+    is_leaf =
+      Enum.map(leaves, &validator_for_type/1)
+      |> is_one_of()
+
+    case nodes do
+      [] ->
+        is_leaf
+
+      nodes ->
+        validator_for_recursive(nodes, is_leaf)
+    end
+  end
+
+  defp validator_for({name, type}) do
+    if recursive_without_union?(type, name) do
+      is_leaf =
+        rewrite_recursive_type(type, name)
+        |> validator_for_type
+
+      validator_for_recursive([type], is_leaf)
+    else
+      validator_for_type(type)
+    end
+  end
+
+  defp validator_for_recursive(nodes, is_leaf) do
+    is_node = fn member ->
+      fn term ->
+        if is_leaf.(term) do
+          true
+        else
+          is_node =
+            nodes
+            |> Enum.map(&map_user_type_to_is_node(&1, member.(member)))
+            |> Enum.map(&validator_for_type(&1))
+            |> is_one_of
+
+          is_node.(term)
+        end
+      end
+    end
+
+    is_node.(is_node)
+  end
+
+  defp map_user_type_to_is_node({:user_type, _line, _name, _args}, is_node), do: is_node
+
+  defp map_user_type_to_is_node({:type, line, type, args}, is_node) do
+    args = Enum.map(args, &map_user_type_to_is_node(&1, is_node))
+    {:type, line, type, args}
+  end
+
+  defp map_user_type_to_is_node({_, _, _l} = type, _is_node), do: type
+
+  defp map_user_type_to_is_node(is_node, _leaf) when is_function(is_node, 1), do: is_node
+
+  defp validator_for_type(validator) when is_function(validator, 1) do
+    validator
+  end
+
+  defp validator_for_type({:type, _, type, _}) when type in [:any, :term] do
+    fn _x -> true end
+  end
+
+  defp validator_for_type({:type, _, :atom, _}) do
+    &is_atom/1
+  end
+
+  defp validator_for_type({:type, _, type, _}) when type in [:none, :no_return] do
+    # For function type validations - the result type should report whether it can
+    # raise and then that should get handled there
+    raise ArgumentError, """
+    Type validations for the none(bottom) type are not supported.
+    """
+  end
+
+  defp validator_for_type({:type, _, :pid, _}) do
+    &is_pid/1
+  end
+
+  defp validator_for_type({:type, _, :port, _}) do
+    &is_port/1
+  end
+
+  defp validator_for_type({:type, _, :integer, _}) do
+    &is_integer/1
+  end
+
+  defp validator_for_type({:type, _, :pos_integer, _}) do
+    compose([&is_integer/1, &(&1 > 0)])
+  end
+
+  defp validator_for_type({:type, _, :neg_integer, _}) do
+    compose([&is_integer/1, &(&1 < 0)])
+  end
+
+  defp validator_for_type({:type, _, :non_neg_integer, _}) do
+    compose([&is_integer/1, &(&1 >= 0)])
+  end
+
+  defp validator_for_type({:type, _, :float, _}) do
+    &is_float/1
+  end
+
+  defp validator_for_type({:type, _, :reference, _}) do
+    &is_reference/1
+  end
+
+  defp validator_for_type({:type, _, :tuple, :any}) do
+    &is_tuple/1
+  end
+
+  defp validator_for_type({:type, _, :tuple, []}) do
+    &(&1 == {})
+  end
+
+  defp validator_for_type({:type, _, :tuple, types}) do
+    validators =
+      types
+      |> Enum.map(&validator_for_type/1)
+
+    tuple_element_count = length(validators)
+
+    fn
+      x when is_tuple(x) and tuple_size(x) == tuple_element_count ->
+        x
+        |> Tuple.to_list()
+        |> Enum.zip(validators)
+        |> Enum.all?(fn {member, fun} ->
+          fun.(member)
+        end)
+
+      _ ->
+        false
+    end
+  end
+
+  defp validator_for_type({:type, _, :list, []}) do
+    &is_list/1
+  end
+
+  defp validator_for_type({:type, _, :list, [type]}) do
+    member = validator_for_type(type)
+
+    &(is_list(&1) && Enum.all?(&1, member))
+  end
+
+  defp validator_for_type({:type, _, nil, []}) do
+    &(&1 === [])
+  end
+
+  defp validator_for_type({:type, _, :nonempty_list, []}) do
+    compose([&(&1 != []), &is_list/1])
+  end
+
+  defp validator_for_type({:type, _, :nonempty_list, [type]}) do
+    member = validator_for_type(type)
+
+    &(&1 != [] && is_list(&1) && Enum.all?(&1, member))
+  end
+
+  defp validator_for_type({:type, _, :maybe_improper_list, []}) do
+    any = &is_any/1
+
+    &is_improper_list(&1, any, any)
+  end
+
+  defp validator_for_type({:type, _, :maybe_improper_list, [type1, type2]}) do
+    head_fun = validator_for_type(type1)
+    member_fun = validator_for_type(type2)
+
+    tail_fun = is_one_of([head_fun, member_fun])
+
+    &is_improper_list(&1, head_fun, tail_fun)
+  end
+
+  defp validator_for_type({:type, _, :nonempty_improper_list, [type1, type2]}) do
+    head_fun = validator_for_type(type1)
+    member_fun = validator_for_type(type2)
+
+    tail_fun = is_one_of([head_fun, member_fun])
+
+    compose([&(&1 != []), &is_improper_list(&1, head_fun, tail_fun)])
+  end
+
+  defp validator_for_type({:type, _, :nonempty_maybe_improper_list, []}) do
+    any = &is_any/1
+
+    compose([&(&1 != []), &is_improper_list(&1, any, any)])
+  end
+
+  defp validator_for_type({:type, _, :nonempty_maybe_improper_list, [type1, type2]}) do
+    head_fun = validator_for_type(type1)
+    member_fun = validator_for_type(type2)
+
+    tail_fun = is_one_of([head_fun, member_fun])
+
+    &is_improper_list(&1, head_fun, tail_fun)
+  end
+
+  defp validator_for_type({:type, _, :map, :any}) do
+    &is_map/1
+  end
+
+  defp validator_for_type({:type, _, :map, []}) do
+    &(&1 == %{})
+  end
+
+  defp validator_for_type({:type, _, :map, field_types}) do
+    functions = field_types |> Enum.map(&validate_map_field/1)
+
+    exact = for {:exact, f} <- functions, do: f
+
+    general = for {:general, f} <- functions, do: f
+    general = compose(general)
+
+    fn
+      x when is_map(x) ->
+        map =
+          Enum.reduce(exact, x, fn current, acc ->
+            current.(acc)
+          end)
+
+        if is_map(map) do
+          general.(map)
+        else
+          false
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  defp validator_for_type({type, _, literal}) when type in [:atom, :integer] do
+    &(&1 == literal)
+  end
+
+  defp validator_for_type({:type, _, :range, [{:integer, _, lower}, {:integer, _, upper}]}) do
+    compose([&is_integer/1, &(&1 in lower..upper)])
+  end
+
+  defp validator_for_type({:type, _, :binary, [{:integer, _, size}, {:integer, _, unit}]}) do
+    case {size, unit} do
+      {0, 0} ->
+        &(&1 == <<>>)
+
+      {_, _} ->
+        fn
+          x when is_bitstring(x) and rem(bit_size(x), unit) == size -> true
+          _ -> false
+        end
+    end
+  end
+
+  ## Built-in types
+  defp validator_for_type({:type, _, :arity, []}) do
+    compose([&is_integer/1, &(&1 in 0..255)])
+  end
+
+  defp validator_for_type({:type, _, :boolean, []}) do
+    &is_boolean/1
+  end
+
+  defp validator_for_type({:type, _, :byte, []}) do
+    &(&1 in 0..255)
+  end
+
+  defp validator_for_type({:type, _, :char, []}) do
+    &(&1 in 0..0x10FFFF)
+  end
+
+  defp validator_for_type({:type, _, :bitstring, []}) do
+    &is_bitstring/1
+  end
+
+  defp validator_for_type({:type, _, :binary, []}) do
+    &is_binary/1
+  end
+
+  # Note: This is the type we call charlist()
+  defp validator_for_type({:type, _, :string, []}) do
+    is_char = compose([&is_integer/1, &(&1 in 0..0x10FFFF)])
+
+    fn
+      x when is_list(x) -> Enum.all?(x, is_char)
+      _ -> false
+    end
+  end
+
+  defp validator_for_type({:type, _, :nonempty_string, []}) do
+    is_char = compose([&is_integer/1, &(&1 in 0..0x10FFFF)])
+
+    fn
+      [] -> false
+      x when is_list(x) -> Enum.all?(x, is_char)
+      _ -> false
+    end
+  end
+
+  defp validator_for_type({:remote_type, _, [{:atom, _, module}, {:atom, _, type}, args]}) do
+    type_validator_for(module, type, Enum.map(args, &validator_for_type/1))
+  end
+
+  defp validator_for_type({:type, _, :iolist, []}) do
+    &is_iolist/1
+  end
+
+  defp validator_for_type({:type, _, :iodata, []}) do
+    is_one_of([&is_binary/1, &is_iolist/1])
+  end
+
+  defp validator_for_type({:type, _, :mfa, []}) do
+    fn
+      {m, f, a} ->
+        is_atom(m) && is_atom(f) && a in 0..255
+
+      _ ->
+        false
+    end
+  end
+
+  defp validator_for_type({:type, _, x, []}) when x in [:module, :node] do
+    &is_atom/1
+  end
+
+  defp validator_for_type({:type, _, :number, []}) do
+    &is_number/1
+  end
+
+  defp validator_for_type({:type, _, :timeout, []}) do
+    is_one_of([
+      &(&1 == :infinity),
+      compose([&is_integer/1, &(&1 >= 0)])
+    ])
+  end
+
+  defp validator_for_type({:type, _, :union, types}) do
+    types
+    |> Enum.map(&validator_for_type/1)
+    |> is_one_of
+  end
+
+  defp char() do
+    integer(0..0x10FFFF)
+  end
+
+  defp non_negative_integer() do
+    map(integer(), &abs/1)
+  end
+
+  defp validate_map_field({:type, _, :map_field_exact, [{_, _, key}, value]}) do
+    member = validator_for_type(value)
+
+    has_key = fn
+      %{^key => value} = x -> member.(value) && Map.delete(x, key)
+      _ -> false
+    end
+
+    {:exact, has_key}
+  end
+
+  defp validate_map_field({:type, _, :map_field_exact, [key, value]}) do
+    key_fun = validator_for_type(key)
+    value_fun = validator_for_type(value)
+
+    member = fn
+      x when x == %{} -> false
+      x when is_map(x) -> Enum.all?(x, fn {k, v} -> key_fun.(k) && value_fun.(v) end)
+      _ -> false
+    end
+
+    {:general, member}
+  end
+
+  defp validate_map_field({:type, _, :map_field_assoc, [key, value]}) do
+    key_fun = validator_for_type(key)
+    value_fun = validator_for_type(value)
+
+    member = fn
+      x when x == %{} -> true
+      x when is_map(x) -> Enum.any?(x, fn {k, v} -> key_fun.(k) && value_fun.(v) end)
+      _ -> false
+    end
+
+    {:general, member}
   end
 
   defp rewrite_recursive_type({:type, _, _, :any} = t, _name), do: t
@@ -635,4 +1061,46 @@ defmodule StreamDataTypes do
     Code.ensure_loaded?(module) and function_exported?(module, :__protocol__, 1) and
       module.__protocol__(:module) == module
   end
+
+  defp compose([f]) when is_function(f, 1), do: f
+
+  defp compose(functions) do
+    fn x -> Enum.all?(functions, & &1.(x)) end
+  end
+
+  defp is_one_of([f]) when is_function(f, 1), do: f
+
+  defp is_one_of(functions) do
+    fn x -> Enum.any?(functions, & &1.(x)) end
+  end
+
+  defp is_improper_list([], _head_fun, _tail_fun), do: true
+
+  defp is_improper_list([elem], _head_fun, tail_fun) do
+    tail_fun.(elem)
+  end
+
+  defp is_improper_list([head | tail], head_fun, tail_fun) do
+    head_fun.(head) &&
+      if is_list(tail) do
+        is_improper_list(tail, head_fun, tail_fun)
+      else
+        tail_fun.(tail)
+      end
+  end
+
+  defp is_improper_list(_x, _head_fun, _tail_fun), do: false
+
+  defp is_iolist([]), do: true
+  defp is_iolist(x) when is_binary(x), do: true
+  defp is_iolist([x | xs]) when x in 0..255, do: is_iolist(xs)
+  defp is_iolist([x | xs]) when is_binary(x), do: is_iolist(xs)
+
+  defp is_iolist([x | xs]) do
+    is_iolist(x) && is_iolist(xs)
+  end
+
+  defp is_iolist(_), do: false
+
+  defp is_any(_), do: true
 end

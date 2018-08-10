@@ -1,12 +1,37 @@
 defmodule StreamDataTypes do
   import StreamData
 
+  @moduledoc """
+  Functions for creating StreamData generators and type validators.
+
+  This module provides simple functions for reading your type definitions
+  and based on that generating a StreamData generator or type validator.
+
+  For an example, to get a generator out of `@type t :: integer() | atom()`,
+  you can use `from_type/3`:
+
+      Enum.take(3, StreamDataTypes.from_type(YourModule, :t))
+      #=> [1, 2, :afd]
+
+  You can also generate functions that check whether a certain term
+  belongs to a type family with `type_validator_for/3`.
+
+      member_function = StreamDataTypes.type_validator_for(YourModule, :t)
+      member_function.(1)
+      #=> true
+      member_function.(:afd)
+      #=> true
+      member_function.({})
+      #=> false
+  """
+
   @doc """
   Accepts a user type definition and returns a StreamData generator.
   The function parameters are:
       - module name
       - function name
-      - list of data generators to be used for parameterized types
+      - list of data generators to be used for parameterized types -
+      defaults to an empty list
 
   ## Examples
 
@@ -58,6 +83,10 @@ defmodule StreamDataTypes do
   towards the "smallest" representitive of your type.
 
   Check `StreamData`'s documentation for more information on shrinking.
+
+  ## Unsupported types
+
+  The only unsupported types for which you will get a failure are pids and ports.
   """
   def from_type(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
@@ -69,16 +98,49 @@ defmodule StreamDataTypes do
     |> generate_from_type()
   end
 
-  def from_type_with_validator(module, name, args \\ [])
-      when is_atom(module) and is_atom(name) and is_list(args) do
-    validate_arguments(args)
+  @doc """
+  Accepts a user type definition and returns a function with 1 arguments
+  that checks whether a term belongs to the type definition.
+  The function parameters are:
+      - module name
+      - function name
+      - list of other member functions to be used for parameterized types -
+      defaults to an empty list
 
-    {
-      from_type(module, name, Enum.map(args, &elem(&1, 0))),
-      type_validator_for(module, name, Enum.map(args, &elem(&1, 1)))
-    }
-  end
+  ## Examples
 
+  Say you have a simple type that is a tuple of an atom and integer,
+  you can use `validator_for_type/3` to create a member function for it.
+
+      defmodule MyModule do
+        @type t :: {atom(), integer()}
+      end
+
+      member = validator_for_type(MyModule, :t)
+      member.({:asdf, 3})
+      #=> true
+      member.(:foo)
+      #=> false
+
+  ## Parameterized Types
+
+  To create member functions for parameterized types you should pass in
+  a list of other member function for the subtype you need.
+
+  ## Examples
+
+      defmodule MyModule do
+        @type dict(a, b) :: list({a, b})
+      end
+
+      import StreamData
+
+      member = validator_for_type(MyModule, :dict, [&is_atom/1, &is_integer/1])
+      member.([[VE: 0], [], [h1K: 1]])
+      #=> true
+      member.([[atom: :atom]])
+      #=> false
+  """
   def type_validator_for(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
     validate_functions(args)
@@ -89,9 +151,42 @@ defmodule StreamDataTypes do
     |> validator_for()
   end
 
-  # NOTE: arity might be a list of functions:
-  # if you have a result type with parameters, then those functions will
-  # check the inner shape of the type
+  @doc """
+  Combines both `from_type/3` and `type_validator_for/3`.
+
+  Returns a tuple of a StreamData generator and a member function for
+  a given type definition.
+
+  The arguments passed in should be a list of 2 element tuples:
+  A StreamData generator and a member function for a type.
+  """
+  def from_type_with_validator(module, name, args \\ [])
+      when is_atom(module) and is_atom(name) and is_list(args) do
+    validate_arguments(args)
+
+    {
+      from_type(module, name, Enum.map(args, &elem(&1, 0))),
+      type_validator_for(module, name, Enum.map(args, &elem(&1, 1)))
+    }
+  end
+
+  @doc """
+  Validate a function type specification.
+
+  The arguments are module name, function name and the arity of the function.
+
+  `validate/3` will check each overloaded type signature because of
+  that it returns a tuple of:
+    - {:ok, [list of successful metadata]} - when everything passes
+    - {:error, [list of error metadata]} - when anything fails
+
+  Example:
+
+      StreamDataTypes.validate(Kernel, is_integer, 1)
+
+  For more information on the metadata - read the documentation of
+  `StreamData.check_all/3`.
+  """
   def validate(module, name, arity)
       when is_atom(module) and is_atom(name) and is_integer(arity) do
     function_to_validate = :erlang.make_fun(module, name, arity)
@@ -177,7 +272,8 @@ defmodule StreamDataTypes do
           Are you sure you have the right function name and arity?
           """
 
-        [spec] -> spec
+        [spec] ->
+          spec
       end
     else
       _ ->

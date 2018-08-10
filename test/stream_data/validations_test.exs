@@ -29,28 +29,27 @@ defmodule StreamData.ValidationsTest do
     end
 
     test "catches functions without no_return" do
-      assert {:error, [%{original_failure: :unspecified_no_return}]} = validate(Functions, :test_missing_no_return, 1)
+      assert {:error, [%{original_failure: :unspecified_no_return}]} =
+               validate(Functions, :test_missing_no_return, 1)
     end
 
     test "catches functions with wrong return type" do
-      assert {:error, [%{original_failure: {_args, return}}]} = validate(Functions, :test_wrong_return, 1)
+      assert {:error, [%{original_failure: {_args, return}}]} =
+               validate(Functions, :test_wrong_return, 1)
+
       assert :foo = return
     end
   end
 
   test "missing function spec" do
-    assert_raise(
-      ArgumentError,
-      ~r/Missing type specification for function/,
-      fn -> validate(Functions, :does_not_exist, 0) end
-    )
+    assert_raise(ArgumentError, ~r/Missing type specification for function/, fn ->
+      validate(Functions, :does_not_exist, 0)
+    end)
   end
 
   test "missing module" do
-    assert_raise(
-      ArgumentError,
-      ~r/Could not find .beam file for/,
-      fn -> validate(DoesNotExist, :function, 1) end
-    )
+    assert_raise(ArgumentError, ~r/Could not find .beam file for/, fn ->
+      validate(DoesNotExist, :function, 1)
+    end)
   end
 end

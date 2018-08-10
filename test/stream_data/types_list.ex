@@ -143,4 +143,7 @@ defmodule StreamDataTest.TypesList do
   @type parameterized_recursive_tuple(a) :: nil | {a, parameterized_recursive_tuple(a)}
   @type parameterized_recursive_forest(a) :: {a, [parameterized_recursive_forest(a)]}
   @type parameterized_keyword(a) :: Keyword.t(a)
+
+  ## Type with names
+  @type named_colour :: {red :: integer, green :: integer, blue :: integer}
 end

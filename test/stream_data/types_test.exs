@@ -1341,6 +1341,24 @@ defmodule StreamData.TypesTest do
     check all y <- term(), do: refute(member.(y))
   end
 
+  test "type with names" do
+    {generator, member} = generate_data(:named_colour)
+
+    check all colour <- generator,
+              y <- term(),
+              !(is_tuple(y) && tuple_size(y) == 3),
+              max_runs: 25 do
+      assert {red, green, blue} = colour
+      assert is_integer(red)
+      assert is_integer(green)
+      assert is_integer(blue)
+      assert member.(colour)
+      refute member.(y)
+    end
+  end
+
+  ## Helpers
+
   defp is_forest({x, forests}) when is_integer(x) and is_list(forests) do
     Enum.all?(forests, &is_forest/1)
   end

@@ -89,6 +89,65 @@ defmodule StreamDataTypes do
     |> validator_for()
   end
 
+  # NOTE: arity might be a list of functions:
+  # if you have a result type with parameters, then those functions will
+  # check the inner shape of the type
+  def validate(module, name, arity)
+      when is_atom(module) and is_atom(name) and is_integer(arity) do
+    function_to_validate = :erlang.make_fun(module, name, arity)
+
+    read_function_spec(module, name, arity)
+    |> Enum.map(fn {arguments, return_type} ->
+      check_function_definition(function_to_validate, name, arguments, return_type)
+    end)
+    |> aggregate_results
+  end
+
+  defp aggregate_results(results) do
+    if Enum.all?(results, &match?({:ok, %{}}, &1)) do
+      {:ok, for({:ok, data} <- results, do: data)}
+    else
+      {:error, for({:error, metadata} <- results, do: metadata)}
+    end
+  end
+
+  defp check_function_definition(function, name, arguments, return_type) do
+    generator =
+      arguments
+      |> Enum.map(&generate/1)
+      |> List.to_tuple()
+      |> tuple()
+      |> map(&Tuple.to_list/1)
+
+    member = validator_for({name, return_type})
+    has_no_return = has_no_return?(return_type)
+
+    fun = build_check_all_function(function, member, has_no_return)
+
+    check_all(generator, [initial_seed: :os.timestamp()], fun)
+  end
+
+  defp build_check_all_function(function, member, has_no_return) do
+    fn args ->
+      try do
+        return_type = apply(function, args)
+
+        if member.(return_type) do
+          {:ok, nil}
+        else
+          {:error, {args, return_type}}
+        end
+      rescue
+        _ ->
+          if has_no_return do
+            {:ok, nil}
+          else
+            {:error, :unspecified_no_return}
+          end
+      end
+    end
+  end
+
   defp pick_type_from_beam(module, name, args) do
     type = for pair = {^name, _type} <- beam_types(module), do: pair
 
@@ -100,6 +159,34 @@ defmodule StreamDataTypes do
       types when is_list(types) ->
         types
         |> pick_type(args)
+    end
+  end
+
+  defp read_function_spec(module, name, arity) do
+    with {^module, beam, _file} <- :code.get_object_code(module),
+         {:ok, {^module, [abstract_code: {:raw_abstract_v1, abstract_code}]}} <-
+           :beam_lib.chunks(beam, [:abstract_code]) do
+      spec =
+        for {:attribute, _line, :spec, {{^name, ^arity}, value}} <- abstract_code,
+            do: Enum.map(value, &inline_bounded_vars/1)
+
+      case spec do
+        [] ->
+          raise ArgumentError, """
+          Missing type specification for function: &#{inspect(module)}.#{name}/#{arity}
+          Are you sure you have the right function name and arity?
+          """
+
+        [spec] -> spec
+      end
+    else
+      _ ->
+        msg = """
+        Could not find .beam file for Module #{inspect(module)}.
+        Are you sure you have passed in the correct module name?
+        """
+
+        raise ArgumentError, msg
     end
   end
 
@@ -611,6 +698,8 @@ defmodule StreamDataTypes do
     generate_union(args)
   end
 
+  defp generate({:ann_type, _, [{:var, _, _name}, type]}), do: generate(type)
+
   defp generate_map_field({:type, _, :map_field_exact, [{_, _, key}, value]}) do
     value = generate(value)
 
@@ -705,11 +794,7 @@ defmodule StreamDataTypes do
   end
 
   defp validator_for_type({:type, _, type, _}) when type in [:none, :no_return] do
-    # For function type validations - the result type should report whether it can
-    # raise and then that should get handled there
-    raise ArgumentError, """
-    Type validations for the none(bottom) type are not supported.
-    """
+    & &1
   end
 
   defp validator_for_type({:type, _, :pid, _}) do
@@ -979,6 +1064,8 @@ defmodule StreamDataTypes do
     |> is_one_of
   end
 
+  defp validator_for_type({:ann_type, _, [{:var, _, _name}, type]}), do: validator_for_type(type)
+
   defp char() do
     integer(0..0x10FFFF)
   end
@@ -1103,4 +1190,58 @@ defmodule StreamDataTypes do
   defp is_iolist(_), do: false
 
   defp is_any(_), do: true
+
+  defp has_no_return?({:type, _, type, []}) when type in [:none, :no_return], do: true
+
+  defp has_no_return?({:type, _, _, args}) when is_list(args), do: has_no_return?(args)
+
+  defp has_no_return?({:user_type, _, _, args}), do: has_no_return?(args)
+
+  defp has_no_return?({:remote_type, _, [_module, _name, args]}), do: has_no_return?(args)
+
+  defp has_no_return?(types) when is_list(types) do
+    types
+    |> Enum.any?(&has_no_return?/1)
+  end
+
+  defp has_no_return?(_), do: false
+
+  defp inline_bounded_vars({:type, _, :fun, [{:type, _, :product, argument_types}, return_type]}),
+    do: {argument_types, return_type}
+
+  defp inline_bounded_vars(
+         {:type, _, :bounded_fun,
+          [{:type, _, :fun, [{:type, _, :product, argument_types}, return_type]}, constraints]}
+       ) do
+    variables =
+      for {:type, _, :constraint, [_, [{:var, _, name}, type]]} <- constraints, do: {name, type}
+
+    {
+      Enum.map(argument_types, &bind_vars(&1, variables)),
+      bind_vars(return_type, variables)
+    }
+  end
+
+  defp bind_vars({:var, _, name}, variables) do
+    variables[name]
+  end
+
+  defp bind_vars({:type, line, type, args}, variables) do
+    {:type, line, type, bind_vars(args, variables)}
+  end
+
+  defp bind_vars({:user_type, line, type, args}, variables) do
+    {:user_type, line, type, bind_vars(args, variables)}
+  end
+
+  defp bind_vars({:remote_type, line, [module, name, args]}, variables) do
+    {:remote_type, line, [module, name, bind_vars(args, variables)]}
+  end
+
+  defp bind_vars(types, variables) when is_list(types) do
+    types
+    |> Enum.map(&bind_vars(&1, variables))
+  end
+
+  defp bind_vars(t, _variables), do: t
 end

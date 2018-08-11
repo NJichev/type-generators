@@ -39,6 +39,11 @@ defmodule StreamData.ValidationsTest do
 
       assert :foo = return
     end
+
+    test "overloaded with variables" do
+      assert {:ok, results} = validate(Functions, :test_overloaded_with_var, 2)
+      assert length(results) == 2
+    end
   end
 
   test "missing function spec" do

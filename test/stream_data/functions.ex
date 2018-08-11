@@ -26,4 +26,9 @@ defmodule StreamDataTest.Functions do
 
   @spec test_wrong_return(integer) :: integer
   def test_wrong_return(_), do: :foo
+
+  @spec test_overloaded_with_var(x :: integer, y :: integer) :: integer
+  def test_overloaded_with_var(x, y) when is_integer(x) and is_integer(y), do: x + y
+  @spec test_overloaded_with_var(x :: atom, y :: atom) :: atom
+  def test_overloaded_with_var(x, y) when is_atom(x) and is_atom(y), do: x
 end

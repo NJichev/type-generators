@@ -1,4 +1,7 @@
 defmodule StreamDataTest.Functions do
+  @type t(a) :: a
+  @type dict(a) :: {atom(), a}
+
   @spec test_no_return(any) :: any | no_return
   def test_no_return(x) when is_integer(x) do
     raise ArgumentError
@@ -31,4 +34,13 @@ defmodule StreamDataTest.Functions do
   def test_overloaded_with_var(x, y) when is_integer(x) and is_integer(y), do: x + y
   @spec test_overloaded_with_var(x :: atom, y :: atom) :: atom
   def test_overloaded_with_var(x, y) when is_atom(x) and is_atom(y), do: x
+
+  @spec test_type_variable(dict(integer)) :: dict(float)
+  def test_type_variable({a, int}), do: {a, int / 1}
+
+  @spec test_remote_type(Keyword.t(integer)) :: Keyword.t(integer)
+  def test_remote_type(x), do: x
+
+  @spec test_nested_user_types(t(t(integer))) :: t(t(t(integer)))
+  def test_nested_user_types(x), do: x
 end

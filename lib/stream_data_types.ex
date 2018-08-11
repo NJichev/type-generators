@@ -193,7 +193,7 @@ defmodule StreamDataTypes do
 
     read_function_spec(module, name, arity)
     |> Enum.map(fn {arguments, return_type} ->
-      check_function_definition(function_to_validate, name, arguments, return_type)
+      check_function_definition(function_to_validate, module, arguments, return_type)
     end)
     |> aggregate_results
   end
@@ -206,15 +206,16 @@ defmodule StreamDataTypes do
     end
   end
 
-  defp check_function_definition(function, name, arguments, return_type) do
+  defp check_function_definition(function, module, arguments, return_type) do
     generator =
       arguments
-      |> Enum.map(&generate/1)
+      |> Enum.map(&expand_user_type(&1, module))
       |> List.to_tuple()
       |> tuple()
       |> map(&Tuple.to_list/1)
 
-    member = validator_for({name, return_type})
+    member = expand_user_validator(return_type, module)
+
     has_no_return = has_no_return?(return_type)
 
     fun = build_check_all_function(function, member, has_no_return)
@@ -1340,4 +1341,16 @@ defmodule StreamDataTypes do
   end
 
   defp bind_vars(t, _variables), do: t
+
+  defp expand_user_type({:user_type, _, name, args}, module) do
+    from_type(module, name, Enum.map(args, &expand_user_type(&1, module)))
+  end
+
+  defp expand_user_type(type, _module), do: generate(type)
+
+  defp expand_user_validator({:user_type, _, name, args}, module) do
+    type_validator_for(module, name, Enum.map(args, &expand_user_validator(&1, module)))
+  end
+
+  defp expand_user_validator(type, _module), do: validator_for_type(type)
 end

@@ -44,6 +44,18 @@ defmodule StreamData.ValidationsTest do
       assert {:ok, results} = validate(Functions, :test_overloaded_with_var, 2)
       assert length(results) == 2
     end
+
+    test "argument with type variable" do
+      assert {:ok, _} = validate(Functions, :test_type_variable, 1)
+    end
+
+    test "arguments with remote types" do
+      assert {:ok, _} = validate(Functions, :test_remote_type, 1)
+    end
+
+    test "nested user types" do
+      assert {:ok, _} = validate(Functions, :test_nested_user_types, 1)
+    end
   end
 
   test "missing function spec" do

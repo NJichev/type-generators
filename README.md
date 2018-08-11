@@ -53,10 +53,3 @@ Validate function type specifications using `validate/3`:
 ```
 {:ok, %{}} = validate(Kernel, :is_integer, 1)
 ```
-
-We can see that the `&String.to_integer/1` type specification fails
-for `""` as input.
-
-```
-{:error, metadata} = validate(String, :to_integer, 1)
-```

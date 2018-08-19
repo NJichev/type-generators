@@ -23,9 +23,9 @@ defmodule StreamDataTest.Functions do
   @spec test_overloaded_spec(atom) :: integer
   def test_overloaded_spec(x) when is_atom(x), do: 1
 
-  @spec test_missing_no_return(integer) :: integer
-  def test_missing_no_return(x) when x > 0, do: raise("oops")
-  def test_missing_no_return(x), do: x
+  @spec test_sometime_raise(integer) :: integer
+  def test_sometime_raise(x) when x > 0, do: raise("oops")
+  def test_sometime_raise(x), do: x
 
   @spec test_wrong_return(integer) :: integer
   def test_wrong_return(_), do: :foo

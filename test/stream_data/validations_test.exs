@@ -28,9 +28,8 @@ defmodule StreamData.ValidationsTest do
       assert length(results) == 2
     end
 
-    test "catches functions without no_return" do
-      assert {:error, [%{original_failure: :unspecified_no_return}]} =
-               validate(Functions, :test_missing_no_return, 1)
+    test "catches functions that error out sometimes" do
+      assert {:ok, _} = validate(Functions, :test_sometime_raise, 1)
     end
 
     test "catches functions with wrong return type" do

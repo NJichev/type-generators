@@ -223,7 +223,20 @@ defmodule StreamDataTypes do
     check_all(generator, [initial_seed: :os.timestamp()], fun)
   end
 
-  defp build_check_all_function(function, member, has_no_return) do
+  defp build_check_all_function(function, _member, true) do
+    fn args ->
+      try do
+        apply(function, args)
+
+        {:ok, :no_return}
+      rescue
+        _ ->
+          {:ok, :no_return}
+      end
+    end
+  end
+
+  defp build_check_all_function(function, member, _) do
     fn args ->
       try do
         return_type = apply(function, args)
@@ -235,11 +248,7 @@ defmodule StreamDataTypes do
         end
       rescue
         _ ->
-          if has_no_return do
-            {:ok, nil}
-          else
-            {:error, :unspecified_no_return}
-          end
+          {:ok, nil}
       end
     end
   end

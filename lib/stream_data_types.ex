@@ -1,12 +1,37 @@
 defmodule StreamDataTypes do
   import StreamData
 
+  @moduledoc """
+  Functions for creating StreamData generators and type validators.
+
+  This module provides simple functions for reading your type definitions
+  and based on that generating a StreamData generator or type validator.
+
+  For an example, to get a generator out of `@type t :: integer() | atom()`,
+  you can use `from_type/3`:
+
+      Enum.take(3, StreamDataTypes.from_type(YourModule, :t))
+      #=> [1, 2, :afd]
+
+  You can also generate functions that check whether a certain term
+  belongs to a type family with `type_validator_for/3`.
+
+      member_function = StreamDataTypes.type_validator_for(YourModule, :t)
+      member_function.(1)
+      #=> true
+      member_function.(:afd)
+      #=> true
+      member_function.({})
+      #=> false
+  """
+
   @doc """
   Accepts a user type definition and returns a StreamData generator.
   The function parameters are:
       - module name
       - function name
-      - list of data generators to be used for parameterized types
+      - list of data generators to be used for parameterized types -
+      defaults to an empty list
 
   ## Examples
 
@@ -58,6 +83,10 @@ defmodule StreamDataTypes do
   towards the "smallest" representitive of your type.
 
   Check `StreamData`'s documentation for more information on shrinking.
+
+  ## Unsupported types
+
+  The only unsupported types for which you will get a failure are pids and ports.
   """
   def from_type(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
@@ -69,6 +98,68 @@ defmodule StreamDataTypes do
     |> generate_from_type()
   end
 
+  @doc """
+  Accepts a user type definition and returns a function with 1 arguments
+  that checks whether a term belongs to the type definition.
+  The function parameters are:
+      - module name
+      - function name
+      - list of other member functions to be used for parameterized types -
+      defaults to an empty list
+
+  ## Examples
+
+  Say you have a simple type that is a tuple of an atom and integer,
+  you can use `validator_for_type/3` to create a member function for it.
+
+      defmodule MyModule do
+        @type t :: {atom(), integer()}
+      end
+
+      member = validator_for_type(MyModule, :t)
+      member.({:asdf, 3})
+      #=> true
+      member.(:foo)
+      #=> false
+
+  ## Parameterized Types
+
+  To create member functions for parameterized types you should pass in
+  a list of other member function for the subtype you need.
+
+  ## Examples
+
+      defmodule MyModule do
+        @type dict(a, b) :: list({a, b})
+      end
+
+      import StreamData
+
+      member = validator_for_type(MyModule, :dict, [&is_atom/1, &is_integer/1])
+      member.([[VE: 0], [], [h1K: 1]])
+      #=> true
+      member.([[atom: :atom]])
+      #=> false
+  """
+  def type_validator_for(module, name, args \\ [])
+      when is_atom(module) and is_atom(name) and is_list(args) do
+    validate_functions(args)
+
+    pick_type_from_beam(module, name, args)
+    |> inline_type_parameters(args)
+    |> inline_user_type(module)
+    |> validator_for()
+  end
+
+  @doc """
+  Combines both `from_type/3` and `type_validator_for/3`.
+
+  Returns a tuple of a StreamData generator and a member function for
+  a given type definition.
+
+  The arguments passed in should be a list of 2 element tuples:
+  A StreamData generator and a member function for a type.
+  """
   def from_type_with_validator(module, name, args \\ [])
       when is_atom(module) and is_atom(name) and is_list(args) do
     validate_arguments(args)
@@ -79,14 +170,87 @@ defmodule StreamDataTypes do
     }
   end
 
-  def type_validator_for(module, name, args \\ [])
-      when is_atom(module) and is_atom(name) and is_list(args) do
-    validate_functions(args)
+  @doc """
+  Validate a function type specification.
 
-    pick_type_from_beam(module, name, args)
-    |> inline_type_parameters(args)
-    |> inline_user_type(module)
-    |> validator_for()
+  The arguments are module name, function name and the arity of the function.
+
+  `validate/3` will check each overloaded type signature because of
+  that it returns a tuple of:
+    - {:ok, [list of successful metadata]} - when everything passes
+    - {:error, [list of error metadata]} - when anything fails
+
+  Example:
+
+      StreamDataTypes.validate(Kernel, is_integer, 1)
+
+  For more information on the metadata - read the documentation of
+  `StreamData.check_all/3`.
+  """
+  def validate(module, name, arity)
+      when is_atom(module) and is_atom(name) and is_integer(arity) do
+    function_to_validate = :erlang.make_fun(module, name, arity)
+
+    read_function_spec(module, name, arity)
+    |> Enum.map(fn {arguments, return_type} ->
+      check_function_definition(function_to_validate, module, arguments, return_type)
+    end)
+    |> aggregate_results
+  end
+
+  defp aggregate_results(results) do
+    if Enum.all?(results, &match?({:ok, %{}}, &1)) do
+      {:ok, for({:ok, data} <- results, do: data)}
+    else
+      {:error, for({:error, metadata} <- results, do: metadata)}
+    end
+  end
+
+  defp check_function_definition(function, module, arguments, return_type) do
+    generator =
+      arguments
+      |> Enum.map(&expand_user_type(&1, module))
+      |> List.to_tuple()
+      |> tuple()
+      |> map(&Tuple.to_list/1)
+
+    member = expand_user_validator(return_type, module)
+
+    has_no_return = has_no_return?(return_type)
+
+    fun = build_check_all_function(function, member, has_no_return)
+
+    check_all(generator, [initial_seed: :os.timestamp()], fun)
+  end
+
+  defp build_check_all_function(function, _member, true) do
+    fn args ->
+      try do
+        apply(function, args)
+
+        {:error, :no_return_specified}
+      rescue
+        _ ->
+          {:ok, :no_return}
+      end
+    end
+  end
+
+  defp build_check_all_function(function, member, _) do
+    fn args ->
+      try do
+        return_type = apply(function, args)
+
+        if member.(return_type) do
+          {:ok, nil}
+        else
+          {:error, {args, return_type}}
+        end
+      rescue
+        _ ->
+          {:ok, nil}
+      end
+    end
   end
 
   defp pick_type_from_beam(module, name, args) do
@@ -100,6 +264,35 @@ defmodule StreamDataTypes do
       types when is_list(types) ->
         types
         |> pick_type(args)
+    end
+  end
+
+  defp read_function_spec(module, name, arity) do
+    with {^module, beam, _file} <- :code.get_object_code(module),
+         {:ok, {^module, [abstract_code: {:raw_abstract_v1, abstract_code}]}} <-
+           :beam_lib.chunks(beam, [:abstract_code]) do
+      spec =
+        for {:attribute, _line, :spec, {{^name, ^arity}, value}} <- abstract_code,
+            do: Enum.map(value, &inline_bounded_vars/1)
+
+      case spec do
+        [] ->
+          raise ArgumentError, """
+          Missing type specification for function: &#{inspect(module)}.#{name}/#{arity}
+          Are you sure you have the right function name and arity?
+          """
+
+        [spec] ->
+          spec
+      end
+    else
+      _ ->
+        msg = """
+        Could not find .beam file for Module #{inspect(module)}.
+        Are you sure you have passed in the correct module name?
+        """
+
+        raise ArgumentError, msg
     end
   end
 
@@ -611,6 +804,8 @@ defmodule StreamDataTypes do
     generate_union(args)
   end
 
+  defp generate({:ann_type, _, [{:var, _, _name}, type]}), do: generate(type)
+
   defp generate_map_field({:type, _, :map_field_exact, [{_, _, key}, value]}) do
     value = generate(value)
 
@@ -705,11 +900,7 @@ defmodule StreamDataTypes do
   end
 
   defp validator_for_type({:type, _, type, _}) when type in [:none, :no_return] do
-    # For function type validations - the result type should report whether it can
-    # raise and then that should get handled there
-    raise ArgumentError, """
-    Type validations for the none(bottom) type are not supported.
-    """
+    & &1
   end
 
   defp validator_for_type({:type, _, :pid, _}) do
@@ -979,6 +1170,8 @@ defmodule StreamDataTypes do
     |> is_one_of
   end
 
+  defp validator_for_type({:ann_type, _, [{:var, _, _name}, type]}), do: validator_for_type(type)
+
   defp char() do
     integer(0..0x10FFFF)
   end
@@ -1103,4 +1296,70 @@ defmodule StreamDataTypes do
   defp is_iolist(_), do: false
 
   defp is_any(_), do: true
+
+  defp has_no_return?({:type, _, type, []}) when type in [:none, :no_return], do: true
+
+  defp has_no_return?({:type, _, _, args}) when is_list(args), do: has_no_return?(args)
+
+  defp has_no_return?({:user_type, _, _, args}), do: has_no_return?(args)
+
+  defp has_no_return?({:remote_type, _, [_module, _name, args]}), do: has_no_return?(args)
+
+  defp has_no_return?(types) when is_list(types) do
+    types
+    |> Enum.any?(&has_no_return?/1)
+  end
+
+  defp has_no_return?(_), do: false
+
+  defp inline_bounded_vars({:type, _, :fun, [{:type, _, :product, argument_types}, return_type]}),
+    do: {argument_types, return_type}
+
+  defp inline_bounded_vars(
+         {:type, _, :bounded_fun,
+          [{:type, _, :fun, [{:type, _, :product, argument_types}, return_type]}, constraints]}
+       ) do
+    variables =
+      for {:type, _, :constraint, [_, [{:var, _, name}, type]]} <- constraints, do: {name, type}
+
+    {
+      Enum.map(argument_types, &bind_vars(&1, variables)),
+      bind_vars(return_type, variables)
+    }
+  end
+
+  defp bind_vars({:var, _, name}, variables) do
+    variables[name]
+  end
+
+  defp bind_vars({:type, line, type, args}, variables) do
+    {:type, line, type, bind_vars(args, variables)}
+  end
+
+  defp bind_vars({:user_type, line, type, args}, variables) do
+    {:user_type, line, type, bind_vars(args, variables)}
+  end
+
+  defp bind_vars({:remote_type, line, [module, name, args]}, variables) do
+    {:remote_type, line, [module, name, bind_vars(args, variables)]}
+  end
+
+  defp bind_vars(types, variables) when is_list(types) do
+    types
+    |> Enum.map(&bind_vars(&1, variables))
+  end
+
+  defp bind_vars(t, _variables), do: t
+
+  defp expand_user_type({:user_type, _, name, args}, module) do
+    from_type(module, name, Enum.map(args, &expand_user_type(&1, module)))
+  end
+
+  defp expand_user_type(type, _module), do: generate(type)
+
+  defp expand_user_validator({:user_type, _, name, args}, module) do
+    type_validator_for(module, name, Enum.map(args, &expand_user_validator(&1, module)))
+  end
+
+  defp expand_user_validator(type, _module), do: validator_for_type(type)
 end

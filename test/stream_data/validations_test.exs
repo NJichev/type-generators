@@ -55,6 +55,10 @@ defmodule StreamData.ValidationsTest do
     test "nested user types" do
       assert {:ok, _} = validate(Functions, :test_nested_user_types, 1)
     end
+
+    test "catches wrong no return" do
+      assert {:error, [%{original_failure: :no_return_specified}]} = validate(Functions, :test_wrong_no_return, 1)
+    end
   end
 
   test "missing function spec" do

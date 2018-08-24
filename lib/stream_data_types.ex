@@ -228,7 +228,7 @@ defmodule StreamDataTypes do
       try do
         apply(function, args)
 
-        {:ok, :no_return}
+        {:error, :no_return_specified}
       rescue
         _ ->
           {:ok, :no_return}

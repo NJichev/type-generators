@@ -2,12 +2,13 @@ defmodule StreamDataTest.Functions do
   @type t(a) :: a
   @type dict(a) :: {atom(), a}
 
-  @spec test_no_return(any) :: any | no_return
-  def test_no_return(x) when is_integer(x) do
+  @spec test_no_return(any) :: no_return
+  def test_no_return(_) do
     raise ArgumentError
   end
 
-  def test_no_return(x), do: x
+  @spec test_wrong_no_return(any) :: no_return
+  def test_wrong_no_return(x), do: x
 
   @spec test_names(year :: integer, month :: integer, day :: integer) :: integer
   def test_names(year, month, day), do: year + month + day
